@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+{% block title %}{{ e.container_name or e._filename }}{% endblock %}
+
+{% block plate_extra %}
+{% if not e._load_error %}
+<dl class="plate-readout">
+    <div><dt>lived</dt><dd>{{ e.container_lifetime_seconds|secs(2) }}</dd></div>
+    <div><dt>ended</dt><dd>{{ ended.label|lower }}</dd></div>
+    <div{% if live != 'saved' %} class="is-alarm"{% endif %}><dt>live evidence</dt><dd>{{ {'saved': 'saved', 'partly': 'partly saved', 'lost': 'lost'}[live] }}</dd></div>
+    <div{% if not e._hash_verified %} class="is-alarm"{% endif %}><dt>hash</dt><dd>{{ 'match' if e._hash_verified else 'MISMATCH' }}</dd></div>
+</dl>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<nav class="crumbs" aria-label="Breadcrumb">
+    <a href="{{ url_for('index', data='legacy' if legacy else 'corrected') }}">← All containers</a>
+    {% if not e._load_error %}<a class="download" href="{{ url_for('report', filename=e._filename) }}" download>Download report (.txt)</a>{% endif %}
+</nav>
+
+{% if e._load_error %}
+<section class="sheet">
+    <header class="sheet-head"><h1 class="sheet-title">Unreadable file</h1></header>
+    <p class="plain-note"><span class="data">{{ e._filename }}</span> is empty or corrupt ({{ e._load_error }}), so there is nothing in it to review.</p>
+</section>
+{% else %}
+{% set t = e.timing if e.timing is mapping else none %}
+
+<header class="sheet pkg-head">
+    <div>
+        <p class="kicker">Container{% if legacy %} · old package{% endif %}</p>
+        <h1 class="pkg-name">{{ e.container_name }}</h1>
+        <p class="pkg-file data">{{ e._filename }}</p>
+    </div>
+    <dl class="facts">
+        <div><dt>Lived</dt><dd class="big">{{ e.container_lifetime_seconds|secs(2) }}</dd></div>
+        <div><dt>Live evidence</dt><dd class="big{% if live != 'saved' %} is-lost{% endif %}">{{ {'saved': 'Saved', 'partly': 'Partly saved', 'lost': 'Lost'}[live] }}</dd></div>
+        <div><dt>How it ended</dt><dd class="big">{{ ended.label }}</dd></div>
+        <div><dt>Captured</dt><dd>{{ e.captured_at|format_ts }}</dd></div>
+        <div><dt>Container ID</dt><dd class="data" title="{{ e.container_id }}">{{ (e.container_id or '')[:12] }}</dd></div>
+    </dl>
+    <p class="ended-detail">{{ ended.detail }}{% if ended.get('exit_code') is not none %} Exit code {{ ended.exit_code }}.{% endif %}{% if ended.inferred %} <span class="muted">(Inferred: this older package doesn't record how it ended.)</span>{% endif %}</p>
+</header>
+
+<div class="stack">
+
+{% if legacy %}
+<p class="sheet legacy-note"><strong>Old package.</strong> Captured before the timing fix: its lifetime reads about 0.3 s too long, and it has no step-by-step timeline or port history.</p>
+{% endif %}
+
+<section class="sheet" aria-labelledby="story-title">
+    <header class="sheet-head"><h2 class="sheet-title" id="story-title">What happened</h2></header>
+    {% if events %}
+    <ol class="story">
+        {% for ev in events %}
+        <li class="ev ev-{{ ev.kind }}">
+            <span class="ev-t">{% if ev.t is not none %}{{ "%.2f"|format(ev.t) }} s{% else %}—{% endif %}</span>
+            <span class="ev-mark" aria-hidden="true"></span>
+            <div class="ev-body">
+                <p>{{ ev.text }}</p>
+                {% if ev.note %}<p class="muted">{{ ev.note }}</p>{% endif %}
+            </div>
+            <span class="ev-clock data">{{ ev.clock or '' }}</span>
+        </li>
+        {% endfor %}
+    </ol>
+    <p class="caption table-caption">Times on the left are seconds after the container started; clock times on the right are UTC. Events without a time are listed last.</p>
+    {% else %}
+    <p class="plain-note">Not available for old packages: they don't record when things happened.</p>
+    {% endif %}
+</section>
+
+<section class="sheet" aria-labelledby="ports-title">
+    <header class="sheet-head"><h2 class="sheet-title" id="ports-title">Ports and connections</h2></header>
+    {% if ports.status == 'ok' %}
+        {% set listening = ports.rows|selectattr('kind', 'equalto', 'listening')|list %}
+        {% set conns = ports.rows|selectattr('kind', 'equalto', 'connection')|list %}
+        <p class="plain-note">
+            {{ listening|length }} listening port{{ 's' if listening|length != 1 }} and {{ conns|length }} connection{{ 's' if conns|length != 1 }} seen,
+            from {{ ports.polls }} read{{ 's' if ports.polls != 1 }} of the container's sockets{% if ports.first_poll_s is not none %} between {{ "%.2f"|format(ports.first_poll_s) }} s and {{ "%.2f"|format(ports.last_poll_s) }} s{% endif %}.
+        </p>
+        {% if ports.rows %}
+        <div class="table-wrap">
+            <table class="mini ports-table">
+                <thead>
+                    <tr><th>What</th><th>Protocol</th><th>Open from</th><th>Open until</th><th class="col-span">Across the container's life</th></tr>
+                </thead>
+                <tbody>
+                    {% for p in ports.rows %}
+                    <tr>
+                        <td><strong>{{ p.label.split(' (')[0] }}</strong><small>{{ 'listening' if p.kind == 'listening' else 'connection' }} · {{ p.states|join(' → ')|lower|replace('_', ' ') }}</small></td>
+                        <td>{{ p.proto_label }}</td>
+                        <td>{% if p.first_seen_s is not none %}{{ "%.2f"|format(p.opened_after_s) }}–{{ "%.2f"|format(p.first_seen_s) }} s<small class="data">{{ p.open_from_clock or '' }}</small>{% else %}<span class="muted">—</span>{% endif %}</td>
+                        <td>{% if p.open_at_exit %}until it stopped{% if p.closed_by_s is not none %} ({{ "%.2f"|format(p.closed_by_s) }} s){% endif %}{% elif p.last_seen_s is not none %}{{ "%.2f"|format(p.last_seen_s) }}–{{ "%.2f"|format(p.closed_by_s) }} s<small class="data">{{ p.open_until_clock or '' }}</small>{% else %}<span class="muted">—</span>{% endif %}</td>
+                        <td class="col-span">
+                            {% if p.bar %}
+                            <span class="span-track" aria-hidden="true">
+                                <span class="span-maybe" style="left: {{ '%.2f'|format(p.bar.a) }}%; width: {{ '%.2f'|format(p.bar.b - p.bar.a) }}%"></span>
+                                <span class="span-seen" style="left: {{ '%.2f'|format(p.bar.b) }}%; width: {{ '%.2f'|format([p.bar.c - p.bar.b, 1.5]|max) }}%"></span>
+                                <span class="span-maybe" style="left: {{ '%.2f'|format(p.bar.c) }}%; width: {{ '%.2f'|format(p.bar.d - p.bar.c) }}%"></span>
+                            </span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <p class="caption table-caption">The poller reads the container's sockets every {{ ports.poll_interval }} s, so each time is a window: "0.21–0.71 s" means it opened somewhere in that half-second. On the bars, dark is when it was seen open and light is the window where it may have opened or closed. Anything that opened and closed between two reads is never seen.{% if ports.truncated %} This container had so many sockets that only the first 500 were kept.{% endif %}</p>
+        {% else %}
+        <p class="plain-note">No ports or connections were open whenever the poller looked.</p>
+        {% endif %}
+    {% elif ports.status == 'never_read' %}
+        <p class="plain-note">No port history: the poller never managed to read this container's sockets before it stopped.</p>
+    {% else %}
+        <p class="plain-note">Not tracked: this package is from before port tracking was added.</p>
+    {% endif %}
+</section>
+
+<section aria-labelledby="evidence-title">
+    <h2 class="section-title" id="evidence-title">The evidence</h2>
+    <div class="stack stack-tight">
+    {% for field, name in field_names %}
+    {% set o = outcomes[field] %}
+    {% set entry = e.get(field) or {} %}
+    {% set d = entry.data %}
+    <article class="sheet field-sheet" aria-labelledby="f-{{ field }}">
+        <header>
+            <h3 id="f-{{ field }}">{{ name }}</h3>
+            <span class="outcome">
+                {% if o.kind == 'lost' %}<i class="sw sw-lost" aria-hidden="true"></i><strong>Lost</strong>
+                {% elif o.kind == 'empty' %}<i class="sw sw-empty" aria-hidden="true"></i><strong>Saved</strong> · no files changed
+                {% else %}<i class="sw sw-saved" aria-hidden="true"></i><strong>Saved</strong> · {{ 'poller copy' if o.kind == 'poller' else o.path|lower }}{% if o.t is not none %}, {{ o.t|when }}{% endif %}{% endif %}
+            </span>
+        </header>
+
+        {% if o.kind == 'empty' %}
+        <p class="plain-note">No files changed compared with the image. This package records it as "lost" because of a capture bug fixed on 2026-09-26: Docker answers "nothing changed" with an empty reply, which the old code misread as a failure. Every real failure is stored with an error message, and this one has none.</p>
+
+        {% elif o.kind == 'lost' %}
+        <div class="loss">
+            <dl>
+                {% for x in losses[field] %}
+                <dt>{{ x.path }}</dt>
+                <dd>{{ x.reason or 'Failed with an error this dashboard does not recognise; see the raw error.' }}
+                    {% if x.raw %}<details><summary>Raw error</summary><pre class="pre">{{ x.raw if x.raw is string else x.raw|tojson(indent=2) }}</pre></details>{% endif %}
+                </dd>
+                {% endfor %}
+            </dl>
+        </div>
+
+        {% elif field == 'network_state' and d is mapping %}
+            {% if d.sockets is defined %}
+                {% if d.sockets %}
+                <ul class="plain-list">
+                    {% for s in d.sockets %}<li>{% if s.kind == 'listening' %}Port <strong>{{ s.local_port }}</strong> {{ s.proto|replace('6', '')|upper }} listening on {{ s.local_ip }}{% else %}{{ s.proto|replace('6', '')|upper }} {{ s.local_ip }}:{{ s.local_port }} → {{ s.remote_ip }}:{{ s.remote_port }} ({{ s.state|lower|replace('_', ' ') }}){% endif %}</li>{% endfor %}
+                </ul>
+                {% else %}
+                <p class="plain-note">No ports or connections were open in this copy.</p>
+                {% endif %}
+            {% endif %}
+            <details class="raw"><summary>Raw socket tables ({{ d.method }}, took {{ d.latency_seconds|secs }})</summary>
+                {% if d.proc_unavailable_reason %}<p class="caption">{{ d.proc_unavailable_reason }}</p>{% endif %}
+                <pre class="pre">{{ d.data if d.data is string else d.data|tojson(indent=2) }}</pre>
+            </details>
+
+        {% elif field == 'process_list' and d is mapping and d.Titles %}
+        <div class="table-wrap">
+            <table class="mini">
+                <thead><tr>{% for title in d.Titles %}<th>{{ title }}</th>{% endfor %}</tr></thead>
+                <tbody>{% for row in d.Processes %}<tr>{% for cell in row %}<td class="data">{{ cell }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+            </table>
+        </div>
+
+        {% elif field == 'filesystem_diff' and d is iterable and d is not string and d is not mapping %}
+            {% if d %}
+            <table class="mini">
+                <thead><tr><th>Change</th><th>Path</th></tr></thead>
+                <tbody>
+                    {% for item in d %}
+                    <tr>
+                        <td class="change">{% if item.Kind == 0 %}changed{% elif item.Kind == 1 %}added{% elif item.Kind == 2 %}deleted{% else %}kind {{ item.Kind }}{% endif %}</td>
+                        <td class="data">{{ item.Path }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="plain-note">No files changed compared with the image.</p>
+            {% endif %}
+
+        {% elif field == 'logs' %}
+            {% if d %}<pre class="pre">{{ d }}</pre>
+            {% else %}<p class="plain-note">The container printed nothing.</p>{% endif %}
+
+        {% else %}
+        <pre class="pre">{{ entry|tojson(indent=2) }}</pre>
+        {% endif %}
+    </article>
+    {% endfor %}
+    </div>
+</section>
+
+<section class="sheet" aria-labelledby="integrity-title">
+    <header class="sheet-head"><h2 class="sheet-title" id="integrity-title">Integrity</h2></header>
+    <p class="seal{% if not e._hash_verified %} is-bad{% endif %}">
+        <span class="seal-mark" aria-hidden="true">{{ '✓' if e._hash_verified else '✕' }}</span>
+        {% if e._hash_verified %}This file matches the hash stored when it was captured.{% else %}This file does NOT match the hash stored when it was captured: it has changed since.{% endif %}
+    </p>
+    <p class="plain-note">That rules out accidental change. The stored hash is inside the same file, so it can't prove nobody deliberately rewrote it.</p>
+    <details class="raw">
+        <summary>Technical details: timing and hashes</summary>
+        <table class="kv">
+            <tr><th>Stored hash</th><td class="data">{{ e.sha256 }}</td></tr>
+            <tr><th>Recomputed now</th><td class="data">{{ e._recomputed_hash }}</td></tr>
+            <tr><th>Started (StartedAt)</th><td class="data">{{ e.container_started_at_raw if e.container_started_at_raw is string else 'unavailable' }}</td></tr>
+            {% if t %}
+            <tr><th>Stopped (FinishedAt)</th><td class="data">{% if t.container_finished_at_raw is string %}{{ t.container_finished_at_raw }}{% else %}unavailable: the container was already removed{% endif %}</td></tr>
+            <tr><th>SIGKILL event</th><td class="data">{{ t.sigkill_event_time_ns|ns_ts }}</td></tr>
+            <tr><th>Die event</th><td class="data">{{ t.die_event_time_ns|ns_ts }}</td></tr>
+            <tr><th>Time of death taken from</th><td>{{ t.death_time_source }}</td></tr>
+            <tr><th>Die event arrived after the stop</th><td>{{ t.exit_to_die_event_seconds|secs }}</td></tr>
+            <tr><th>Die handler started after the event</th><td>{{ t.die_handling_lag_seconds|secs }}</td></tr>
+            {% set off = t.daemon_clock_offset if t.daemon_clock_offset is mapping else {} %}
+            <tr><th>Docker clock minus this host's clock</th><td>{% if off.offset_seconds is defined %}{{ "%+.4f"|format(off.offset_seconds) }} s ± {{ "%.4f"|format(off.uncertainty_seconds) }} s{% else %}{{ off.error or 'not measured' }}{% endif %}</td></tr>
+            {% endif %}
+            <tr><th>Kill-trigger capture started</th><td>{% if kill_start_after_exit is not none %}{{ kill_start_after_exit|abs|secs }} {{ 'after' if kill_start_after_exit >= 0 else 'before' }} the stop (this host's clock){% else %}not recorded{% endif %}</td></tr>
+            <tr><th>Kill-trigger capture took</th><td>{{ e.live_kill_trigger_latency_seconds|secs }}</td></tr>
+            <tr><th>Post-mortem capture took</th><td>{{ e.reactive_postmortem_latency_seconds|secs }}</td></tr>
+        </table>
+    </details>
+</section>
+
+</div>
+{% endif %}
+{% endblock %}
