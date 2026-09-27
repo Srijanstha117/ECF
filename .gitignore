@@ -22,3 +22,14 @@ Thumbs.db
 
 # design-tool decision-page state (session scratch)
 .impeccable/questions/
+
+# listener heartbeat (live status for the dashboard; rewritten every 2 s)
+evidence/.listener.json*
+
+# dashboard accounts: password hashes + JWT signing secret (never commit)
+config/
+
+# output of windowless runs (shown on the dashboard's Logs page)
+logs/
+# stop request from the dashboard to the listener (consumed within 2 s)
+evidence/.listener.stop

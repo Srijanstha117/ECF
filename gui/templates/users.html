@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Users{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Users</h1>
+        <p class="page-sub">Who can sign in to this dashboard. Admins can manage accounts; analysts can review evidence.</p>
+    </div>
+</div>
+
+{% if message %}<p class="notice notice-success" role="status">{{ message }}</p>{% endif %}
+{% if error %}<p class="notice notice-error" role="alert">{{ error }}</p>{% endif %}
+
+<div class="grid-2 grid-2-wide">
+    <section class="panel" aria-labelledby="users-title">
+        <header class="panel-head"><h2 class="panel-title" id="users-title">Accounts</h2><span class="panel-meta">{{ users|length }}</span></header>
+        <div class="table-wrap">
+            <table class="list users-table">
+                <thead><tr><th>Username</th><th>Role</th><th>Last sign-in</th><th>Set a new password</th><th></th></tr></thead>
+                <tbody>
+                    {% for u in users %}
+                    <tr>
+                        <td><strong>{{ u.username }}</strong>{% if u.username == current_user.username %} <span class="muted">(you)</span>{% endif %}<small>added {{ u.created|format_ts }}</small></td>
+                        <td><span class="tag {{ 'tag-saved' if u.role == 'admin' else 'tag-neutral' }}">{{ u.role }}</span></td>
+                        <td class="nowrap">{{ u.last_login|ago if u.last_login else 'never' }}</td>
+                        <td>
+                            <form method="post" class="inline-form">
+                                <input type="hidden" name="action" value="reset">
+                                <input type="hidden" name="username" value="{{ u.username }}">
+                                <label class="visually-hidden" for="pw-{{ loop.index }}">New password for {{ u.username }}</label>
+                                <input class="field field-sm" id="pw-{{ loop.index }}" name="password" type="password" minlength="8" autocomplete="new-password" placeholder="new password" required>
+                                <button class="button button-ghost" type="submit">Set</button>
+                            </form>
+                        </td>
+                        <td>
+                            {% if u.username != current_user.username %}
+                            <form method="post" onsubmit="return confirm('Delete {{ u.username }}? They are signed out at once.');">
+                                <input type="hidden" name="action" value="delete">
+                                <input type="hidden" name="username" value="{{ u.username }}">
+                                <button class="button button-danger-ghost" type="submit">Delete</button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="panel" aria-labelledby="add-title">
+        <header class="panel-head"><h2 class="panel-title" id="add-title">Add an account</h2></header>
+        <form method="post" class="form panel-body">
+            <input type="hidden" name="action" value="add">
+            <label class="field-label" for="new-username">Username</label>
+            <input class="field" id="new-username" name="username" required pattern="[A-Za-z0-9_.\-]{3,32}"
+                   title="3–32 characters: letters, digits, dot, dash or underscore" autocomplete="off">
+            <label class="field-label" for="new-role">Role</label>
+            <select class="field" id="new-role" name="role">
+                <option value="analyst">Analyst: reviews evidence</option>
+                <option value="admin">Admin: also manages accounts</option>
+            </select>
+            <label class="field-label" for="new-password">Password <span class="field-hint">at least 8 characters</span></label>
+            <input class="field" id="new-password" name="password" type="password" minlength="8" autocomplete="new-password" required>
+            <label class="field-label" for="new-confirm">Type it again</label>
+            <input class="field" id="new-confirm" name="confirm" type="password" minlength="8" autocomplete="new-password" required>
+            <button class="button button-primary" type="submit">Add account</button>
+        </form>
+    </section>
+</div>
+{% endblock %}

@@ -1,3 +1,5 @@
 # Evidence is stored byte-for-byte as captured: no line-ending conversion.
 evidence/*.json -text
 *.exe binary
+# Windows Script Host scripts keep CRLF
+*.vbs text eol=crlf

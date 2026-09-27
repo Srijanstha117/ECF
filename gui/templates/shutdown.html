@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Shut down{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Shut down</h1>
+        <p class="page-sub">The dashboard and the listener run in the background with no window. Stop them here.</p>
+    </div>
+</div>
+
+{% if done %}
+<p class="notice notice-success" role="status">
+    The dashboard has stopped. You can close this tab.
+    {% if done.also_listener %}
+        {% if done.listener_asked %}The listener is stopping too: containers that die from now on won't be captured.
+        {% else %}The listener wasn't running.{% endif %}
+    {% elif done.was_running %}
+        The listener keeps capturing evidence in the background.
+    {% else %}
+        The listener isn't running, so nothing is being captured.
+    {% endif %}
+    To open it again, run <span class="data">start.vbs</span> or the dashboard app.
+</p>
+{% else %}
+<section class="panel panel-narrow" aria-labelledby="sd-title">
+    <header class="panel-head"><h2 class="panel-title" id="sd-title">What should stop?</h2></header>
+    <div class="panel-body">
+        <p>Listener: <strong>{{ listener.label }}</strong> ({{ listener.sub }}).</p>
+        {% if listener.state in ('running', 'waiting') %}
+        <p>Stopping only the dashboard leaves the listener capturing, so evidence keeps being saved. Stop both when you've finished experimenting.</p>
+        <form method="post" class="shutdown-choices">
+            <button class="button button-primary" type="submit" name="what" value="all">Stop dashboard and listener</button>
+            <button class="button button-secondary" type="submit" name="what" value="dashboard">Stop dashboard only</button>
+        </form>
+        {% else %}
+        <form method="post" class="shutdown-choices">
+            <button class="button button-primary" type="submit" name="what" value="dashboard">Stop dashboard</button>
+        </form>
+        {% endif %}
+    </div>
+</section>
+{% endif %}
+{% endblock %}

@@ -12,10 +12,12 @@ check catches accidental change; because the hash lives in the same
 file, it can't by itself prove the file wasn't deliberately rewritten
 -- the UI says so rather than overclaiming.
 
-Run in dev with:     python app.py
-Run as packaged exe: ContainerForensicsGUI.exe (see BUILD.md)
+Run in dev with:     python app.py            (debug + auto-reload, in a terminal)
+Run windowless:      pythonw app.py --open    (what start.vbs does), or
+                     ContainerForensicsGUI.exe (see BUILD.md)
 Then open:           http://127.0.0.1:5000 (opens automatically when
-                      running as a packaged exe)
+                      windowless; output goes to logs/dashboard.log)
+Stop it with the dashboard's "Shut down" button (or Ctrl+C in dev).
 
 This deliberately binds to 127.0.0.1 only, never 0.0.0.0 -- it reads
 whatever Docker daemon is on THIS machine, so there is no meaningful
@@ -27,11 +29,16 @@ import datetime
 import glob
 import hashlib
 import json
+import math
 import os
 import re
 import sys
+import time
 
-from flask import Flask, Response, abort, render_template, request
+from flask import Flask, Response, abort, g, redirect, render_template, request, url_for
+
+import runlog
+from auth import SESSION_HOURS, AuthError, AuthStore
 
 
 def resource_path(relative_path):
@@ -308,7 +315,19 @@ def summarize(evidence):
         "live": live_state(outcomes),
         "ports": ports_brief(evidence),
         "ended": termination_of(evidence),
+        "id": (evidence.get("container_id") or "")[:12],
+        "full_id": evidence.get("container_id") or "",
+        "captured_at": _num(evidence.get("captured_at")),
+        "resources": resources_brief(evidence),
     }
+
+
+def resources_brief(evidence):
+    """Peak CPU and memory for the list, or None if not recorded."""
+    r = evidence.get("resource_timeline")
+    if not isinstance(r, dict) or "error" in r:
+        return None
+    return {"peak_cpu": r.get("peak_cpu_pct"), "peak_mem": r.get("peak_mem_bytes")}
 
 
 # ---------------------------------------------------------------- the result
@@ -534,6 +553,82 @@ def port_rows(evidence):
     }
 
 
+# ---------------------------------------------------------------- resource use
+
+def format_bytes(value, per_second=False):
+    """1536 -> '1.5 KiB' (binary units, as `docker stats` shows them)."""
+    value = _num(value)
+    if value is None:
+        return "—"
+    for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
+        if abs(value) < 1024 or unit == "TiB":
+            text = f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
+            return text + ("/s" if per_second else "")
+        value /= 1024
+
+
+def _nice_ceiling(value):
+    """A round axis maximum at or above value: 1, 2, 2.5, 5 x 10^k."""
+    if not value or value <= 0:
+        return 1.0
+    exp = 10 ** math.floor(math.log10(value))
+    for step in (1, 2, 2.5, 5, 10):
+        if value <= step * exp:
+            return step * exp
+    return 10 * exp
+
+
+def resource_charts(evidence):
+    """Geometry for the CPU, memory and network charts on a container's
+    page: one small chart per measure, sharing the time axis (seconds
+    since the container started), with the exit marked."""
+    r = evidence.get("resource_timeline")
+    if not isinstance(r, dict):
+        return {"status": "not_recorded"}
+    if "error" in r:
+        return {"status": "never_sampled"}
+    samples = [x for x in r.get("samples", []) if x.get("t_s") is not None]
+    if not samples:
+        return {"status": "never_sampled"}
+    lifetime = _num(evidence.get("container_lifetime_seconds")) or samples[-1]["t_s"]
+    span = max(lifetime, samples[-1]["t_s"]) or 1.0
+
+    def x(t):
+        return max(0.0, min(100.0, t / span * 100))
+
+    def chart(title, series, top, fmt, summary):
+        top = _nice_ceiling(top)
+        lines = []
+        for key, label, cls in series:
+            points = " ".join(f"{x(s['t_s']):.3f},{100 - min(s[key], top) / top * 100:.3f}" for s in samples)
+            lines.append({"points": points, "label": label, "cls": cls})
+        return {"title": title, "lines": lines, "summary": summary, "legend": len(series) > 1,
+                "y_ticks": [{"y": 100 - f * 100, "label": fmt(top * f)} for f in (0, 0.5, 1)]}
+
+    peak_cpu = r.get("peak_cpu_pct") or 0
+    peak_mem = r.get("peak_mem_bytes") or 0
+    peak_net = max(max(s["rx_rate"], s["tx_rate"]) for s in samples)
+    mem_limit = r.get("mem_limit_bytes")
+    charts = [
+        chart("CPU", [("cpu_pct", "CPU", "s-cpu")], peak_cpu, lambda v: f"{v:g}%",
+              f"peak {peak_cpu:.1f}%, average {r.get('avg_cpu_pct', 0):.1f}% (100% = one core)"),
+        chart("Memory", [("mem_bytes", "Memory", "s-mem")], peak_mem, format_bytes,
+              f"peak {format_bytes(peak_mem)}" + (f" of {format_bytes(mem_limit)} limit" if mem_limit else "")),
+        chart("Network I/O", [("rx_rate", "In", "s-rx"), ("tx_rate", "Out", "s-tx")], peak_net,
+              lambda v: format_bytes(v, per_second=True),
+              f"{format_bytes(r.get('total_rx_bytes'))} in, {format_bytes(r.get('total_tx_bytes'))} out in total"),
+    ]
+    ticks = time_ticks(span)
+    return {"status": "ok", "charts": charts, "x_ticks": [{"x": x(t), "label": f"{t:g}"} for t in ticks],
+            "exit_x": x(lifetime), "samples": len(samples), "interval": r.get("interval_seconds"),
+            "note": r.get("note")}
+
+
+def time_ticks(span):
+    step = _nice_ceiling(span / 5)
+    return [round(i * step, 6) for i in range(int(span / step) + 1)]
+
+
 # ---------------------------------------------------------------- why lost
 
 def _error_text(attempt):
@@ -621,6 +716,8 @@ app.jinja_env.filters["format_ts"] = format_timestamp
 app.jinja_env.filters["secs"] = format_seconds
 app.jinja_env.filters["ns_ts"] = format_ns
 app.jinja_env.filters["when"] = format_when
+app.jinja_env.filters["bytes"] = format_bytes
+app.jinja_env.filters["ago"] = lambda ts: _ago(time.time() - ts) if _num(ts) else "—"
 
 
 # ---------------------------------------------------------------- text report
@@ -721,6 +818,21 @@ def text_report(evidence):
         heading("Logs")
         lines += ["  " + line for line in logs.splitlines()] or ["  (the container printed nothing)"]
 
+    res = evidence.get("resource_timeline")
+    heading("Resource use")
+    if isinstance(res, dict) and "error" not in res:
+        lines += [
+            f"  CPU:      peak {res.get('peak_cpu_pct', 0):.1f}%, average {res.get('avg_cpu_pct', 0):.1f}% (100% = one core)",
+            f"  Memory:   peak {format_bytes(res.get('peak_mem_bytes'))}"
+            + (f" of a {format_bytes(res.get('mem_limit_bytes'))} limit" if res.get("mem_limit_bytes") else ""),
+            f"  Network:  {format_bytes(res.get('total_rx_bytes'))} received, {format_bytes(res.get('total_tx_bytes'))} sent",
+            f"  ({len(res.get('samples', []))} samples, every {res.get('interval_seconds')} s)",
+        ]
+    elif isinstance(res, dict):
+        lines.append("  Not available: the poller never sampled this container's resource use.")
+    else:
+        lines.append("  Not tracked: this package is from before resource tracking was added.")
+
     heading("Integrity")
     lines += [
         f"Stored SHA-256:     {evidence.get('sha256')}",
@@ -737,11 +849,22 @@ def text_report(evidence):
 
 # ---------------------------------------------------------------- routes
 
-@app.route("/")
-def index():
+def _all_rows():
     loaded = load_all_evidence()
     unreadable = [e for e in loaded if e.get("_load_error")]
     rows = [summarize(e) for e in loaded if not e.get("_load_error")]
+    return loaded, unreadable, rows
+
+
+def _with_bars(rows, longest):
+    for r in rows:
+        r["bar_w"] = r["lifetime"] / longest * 100 if r["lifetime"] is not None else None
+    return rows
+
+
+@app.route("/")
+def index():
+    loaded, unreadable, rows = _all_rows()
     datasets = {
         "corrected": [r for r in rows if not r["legacy"]],
         "legacy": [r for r in rows if r["legacy"]],
@@ -749,24 +872,554 @@ def index():
     dataset = request.args.get("data", "corrected")
     if dataset not in datasets:
         dataset = "corrected"
-    shown = sorted(datasets[dataset], key=lambda r: (r["lifetime"] is None, r["lifetime"] or 0))
+    # Newest capture first: the list doubles as the incident log.
+    shown = sorted(datasets[dataset], key=lambda r: r["captured_at"] or 0, reverse=True)
     summary = result_summary(shown)
     longest = summary["max_lifetime"] if summary and summary["max_lifetime"] else 1.0
-    for r in shown:
-        r["bar_w"] = r["lifetime"] / longest * 100 if r["lifetime"] is not None else None
+    _with_bars(shown, longest)
+    mismatches = [r for r in rows if not r["hash_ok"]]
+    last = max((r["captured_at"] for r in rows if r["captured_at"]), default=None)
+    beat = read_heartbeat()
+    kpis = {
+        "running": len(live_containers(beat)) if listener_status(beat)["state"] == "running" else None,
+        "packages": len(shown),
+        "saved": summary["saved"] if summary else 0,
+        "lost": (summary["total"] - summary["saved"]) if summary else 0,
+        "saved_pct": round(summary["saved"] / summary["total"] * 100) if summary else None,
+        "readable": len(rows),
+        "hash_ok": len(rows) - len(mismatches),
+        "last_capture": last,
+        "last_capture_ago": _ago(time.time() - last) if last else None,
+        "unreadable": len(unreadable),
+    }
     return render_template(
         "index.html",
         rows=shown,
         summary=summary,
+        kpis=kpis,
+        live=live_containers(beat),
         poll_x=POLL_INTERVAL_SECONDS / longest * 100 if POLL_INTERVAL_SECONDS < longest else None,
         dataset=dataset,
         dataset_sizes={name: len(members) for name, members in datasets.items()},
         unreadable=unreadable,
-        mismatches=[r for r in rows if not r["hash_ok"]],
+        mismatches=mismatches,
         total=len(loaded),
         field_names=FIELD_NAMES,
         poll_interval=POLL_INTERVAL_SECONDS,
     )
+
+
+def _search_text(r):
+    ports = r["ports"].get("ports", []) if isinstance(r["ports"], dict) else []
+    captured = datetime.datetime.fromtimestamp(r["captured_at"], tz=datetime.timezone.utc).strftime("%Y-%m-%d %H:%M") if r["captured_at"] else ""
+    return " ".join([r["name"], r["full_id"], r["filename"], r["ended"]["label"], " ".join(ports),
+                     captured, "legacy old" if r["legacy"] else "current", r["live"]]).lower()
+
+
+@app.route("/search")
+def search():
+    """Every container (current and old) matching all the words typed:
+    name, container ID, how it ended, a port, or a capture date."""
+    q = request.args.get("q", "").strip()
+    loaded, unreadable, rows = _all_rows()
+    terms = q.lower().split()
+    hits = [r for r in rows if terms and all(t in _search_text(r) for t in terms)]
+    hits.sort(key=lambda r: r["captured_at"] or 0, reverse=True)
+    longest = max((r["lifetime"] for r in hits if r["lifetime"] is not None), default=1.0) or 1.0
+    _with_bars(hits, longest)
+    return render_template(
+        "search.html", q=q, rows=hits, total=len(rows), field_names=FIELD_NAMES,
+        poll_x=POLL_INTERVAL_SECONDS / longest * 100 if POLL_INTERVAL_SECONDS < longest else None,
+        poll_interval=POLL_INTERVAL_SECONDS,
+    )
+
+
+# ---------------------------------------------------------------- search suggestions
+
+SUGGEST_MIN_CHARS = 2
+SUGGEST_LIMIT = 4
+_rows_cache = {"sig": None, "rows": []}
+
+
+def _cached_rows():
+    """Readable rows, re-read only when the evidence folder changes: the
+    suggestions are fetched as you type, and each full read re-hashes
+    every package."""
+    sig = evidence_signature()
+    if _rows_cache["sig"] != sig:
+        _rows_cache["rows"] = _all_rows()[2]
+        _rows_cache["sig"] = sig
+    return _rows_cache["rows"]
+
+
+def _utc(ts, fmt):
+    return datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc).strftime(fmt) if ts else ""
+
+
+def search_suggestions(rows, q, limit=SUGGEST_LIMIT):
+    """Up to `limit` suggestions for what's been typed so far: matching
+    containers (open straight to their page) and, for a single word,
+    matching ports, endings and capture dates (open the search for them).
+    Prefix matches rank first; containers newest first."""
+    q = " ".join(q.lower().split())
+    if len(q) < SUGGEST_MIN_CHARS:
+        return []
+    terms = q.split()
+
+    def rank(text):
+        text = text.lower()
+        return 0 if text.startswith(q) else 1 if q in text else None
+
+    def starts_a_word(term, text):
+        # Suggestions are stricter than the search page: "re" shouldn't
+        # suggest a container because its ending says "cu-rre-nt".
+        return re.search(r"(?:^|[^a-z0-9])" + re.escape(term), text) is not None
+
+    containers = []
+    for r in rows:
+        name_rank = rank(r["name"])
+        by_id = r["full_id"].lower().startswith(q)
+        if name_rank is not None or by_id:
+            best = 0 if by_id else name_rank
+        elif all(starts_a_word(t, _search_text(r)) for t in terms):
+            best = 2  # matched on something else: a port, a date, how it ended
+        else:
+            continue
+        containers.append((best, -(r["captured_at"] or 0), r, by_id and name_rank is None))
+    containers.sort(key=lambda c: (c[0], c[1]))
+    container_items = []
+    for _, _, r, by_id in containers:
+        bits = [f"ID {r['id']}"] if by_id else []
+        bits += [r["ended"]["label"], _utc(r["captured_at"], "%d %b %H:%M UTC") or "capture time unknown"]
+        if r["legacy"]:
+            bits.append("old")
+        container_items.append({"kind": "Container", "label": r["name"], "detail": " · ".join(bits),
+                                "url": url_for("detail", filename=r["filename"])})
+
+    group_items = []
+    if len(terms) == 1:
+        groups = {}  # (kind, label, search for) -> [rank, count]
+
+        def add(kind, label, search_for, text):
+            found = rank(text)
+            if found is None:
+                return
+            entry = groups.setdefault((kind, label, search_for), [found, 0])
+            entry[0] = min(entry[0], found)
+            entry[1] += 1
+
+        for r in rows:
+            for port in (r["ports"].get("ports", []) if isinstance(r["ports"], dict) else []):
+                add("Port", port, port.split("/")[0], port)
+            add("Ended", r["ended"]["label"], r["ended"]["label"].lower(), r["ended"]["label"])
+            day = _utc(r["captured_at"], "%Y-%m-%d")
+            if day:
+                add("Date", day, day, day)
+        def group_order(group):
+            (kind, label, _), (found, count) = group
+            # Dates newest first; everything else alphabetical.
+            return found, -count, kind, tuple(-ord(c) for c in label) if kind == "Date" else label
+
+        for (kind, label, search_for), (found, count) in sorted(groups.items(), key=group_order):
+            group_items.append({"kind": kind, "label": label,
+                                "detail": f"{count} container{'s' if count != 1 else ''}",
+                                "url": url_for("search", q=search_for)})
+
+    # A mix: containers first (at most limit - 1 while there are groups to
+    # show), then groups, then more containers if there's still room.
+    first = container_items[:limit - 1] if group_items else container_items[:limit]
+    picked = first + group_items[:limit - len(first)]
+    picked += container_items[len(first):len(first) + limit - len(picked)]
+    return picked
+
+
+@app.route("/api/search/suggest")
+def api_search_suggest():
+    q = request.args.get("q", "")[:100]
+    return {"q": q, "suggestions": search_suggestions(_cached_rows(), q)}
+
+
+@app.route("/api/live")
+def api_live():
+    """Live CPU / memory / network for running containers, straight from the
+    listener's heartbeat (the dashboard itself never talks to Docker)."""
+    beat = read_heartbeat()
+    status = listener_status(beat)
+    return {"listener": status, "live": live_containers(beat) if status["state"] == "running" else [],
+            "evidence_sig": evidence_signature(), "at": time.time()}
+
+
+# ---------------------------------------------------------------- listener status
+
+# Mirrors the heartbeat in src/listener.py: rewritten every 2 s while the
+# listener runs; older than this means it has stopped or crashed.
+HEARTBEAT_FILE = ".listener.json"
+HEARTBEAT_STALE_SECONDS = 6
+
+
+def _ago(seconds):
+    seconds = int(seconds)
+    if seconds < 60:
+        return f"{seconds} s ago"
+    if seconds < 3600:
+        return f"{seconds // 60} min ago"
+    if seconds < 86400:
+        return f"{seconds // 3600} h ago"
+    return f"{seconds // 86400} days ago"
+
+
+def read_heartbeat():
+    try:
+        with open(os.path.join(EVIDENCE_DIR, HEARTBEAT_FILE)) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def live_containers(beat):
+    """Running containers with their latest figures, busiest first."""
+    if not beat:
+        return []
+    live = [x for x in beat.get("live") or [] if isinstance(x, dict)]
+    return sorted(live, key=lambda x: -(x.get("cpu_pct") or 0))
+
+
+def listener_status(beat=False):
+    """Is the capture listener running right now? Read from the heartbeat
+    file it keeps in the evidence folder."""
+    if beat is False:
+        beat = read_heartbeat()
+    if beat is None:
+        return {"state": "never", "label": "Listener not running", "sub": "no capture yet on this machine"}
+    last = _num(beat.get("last_beat"))
+    if last is None:
+        return {"state": "stale", "label": "Listener not running", "sub": "status file unreadable"}
+    age = max(0.0, time.time() - last)
+    if beat.get("state") == "running" and age < HEARTBEAT_STALE_SECONDS:
+        watching = beat.get("watching") or 0
+        return {"state": "running", "label": "Listener running",
+                "sub": f"watching {watching} container{'s' if watching != 1 else ''}"}
+    if beat.get("state") == "waiting_docker" and age < HEARTBEAT_STALE_SECONDS:
+        return {"state": "waiting", "label": "Listener waiting for Docker", "sub": "Docker isn't reachable yet"}
+    if beat.get("state") == "stopped":
+        return {"state": "stopped", "label": "Listener stopped", "sub": f"stopped {_ago(age)}"}
+    return {"state": "stale", "label": "Listener not running", "sub": f"last seen {_ago(age)}"}
+
+
+def evidence_signature():
+    """Changes whenever an evidence file is added, removed or rewritten --
+    lets an open page notice new evidence without reloading."""
+    files = glob.glob(os.path.join(EVIDENCE_DIR, "*.json"))
+    return f"{len(files)}:{max((os.path.getmtime(f) for f in files), default=0):.3f}"
+
+
+@app.context_processor
+def inject_status():
+    return {"listener": listener_status(), "evidence_sig": evidence_signature()}
+
+
+@app.route("/api/status")
+def api_status():
+    return {"listener": listener_status(), "evidence_sig": evidence_signature()}
+
+
+# ---------------------------------------------------------------- starting the listener
+
+CODE_DIR = os.path.normpath(os.path.join(external_base_dir(), ".."))
+LOGS_DIR = os.path.join(CODE_DIR, "logs")
+# The listener watches for this file and stops when it appears (it has no
+# window to close). Same path as STOP_REQUEST_PATH in src/listener.py.
+LISTENER_STOP_PATH = os.path.join(EVIDENCE_DIR, ".listener.stop")
+
+
+def _listener_command():
+    """How to run src/listener.py. The listener needs the docker package,
+    which the packaged exe doesn't contain, so it always runs with the
+    project's own venv Python (or, from source, whatever runs this app)."""
+    script = os.path.join(CODE_DIR, "src", "listener.py")
+    if not os.path.isfile(script):
+        return None, f"can't find {script}"
+    candidates = [os.path.join(CODE_DIR, "venv", "Scripts", "python.exe"),
+                  os.path.join(CODE_DIR, "venv", "bin", "python")]
+    if not getattr(sys, "frozen", False):
+        candidates.append(sys.executable)
+    python = next((c for c in candidates if os.path.isfile(c)), None)
+    if python is None:
+        return None, "the project's Python environment (venv) is missing; see README section 1"
+    # pythonw.exe is the same Python without a console window.
+    windowless = os.path.join(os.path.dirname(python), "pythonw.exe")
+    if os.name == "nt" and os.path.isfile(windowless):
+        python = windowless
+    return [python, "listener.py", "--background"], None
+
+
+_last_launch = {"at": 0.0}
+
+
+def start_listener():
+    """Starts the listener in the background (no window) unless one is
+    already running. Returns (started: bool, message)."""
+    if listener_status()["state"] in ("running", "waiting"):
+        return False, "already running"
+    # A listener takes a few seconds to write its first heartbeat; don't
+    # launch another in that window (a second one would capture twice).
+    if time.time() - _last_launch["at"] < 15:
+        return False, "starting"
+    command, problem = _listener_command()
+    if problem:
+        return False, problem
+    import subprocess
+    # The listener writes its own log (logs/listener.log), so it needs
+    # nothing from us; and it must outlive the dashboard.
+    kwargs = {"cwd": os.path.join(CODE_DIR, "src"), "stdin": subprocess.DEVNULL,
+              "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+    if os.name == "nt":
+        # No window, and break away from any job object this process is in
+        # (some launchers use one), or closing it would end the listener too.
+        # Not every job allows that, hence the retry.
+        flags = subprocess.CREATE_NO_WINDOW
+        try:
+            subprocess.Popen(command, creationflags=flags | subprocess.CREATE_BREAKAWAY_FROM_JOB, **kwargs)
+        except OSError:
+            subprocess.Popen(command, creationflags=flags, **kwargs)
+    else:
+        subprocess.Popen(command, start_new_session=True, **kwargs)
+    _last_launch["at"] = time.time()
+    return True, "started"
+
+
+def stop_listener():
+    """Asks a running listener to stop. Returns (asked: bool, message)."""
+    if listener_status()["state"] not in ("running", "waiting"):
+        return False, "not running"
+    with open(LISTENER_STOP_PATH, "w") as f:
+        f.write(str(time.time()))
+    _last_launch["at"] = 0.0  # allow an immediate restart once it has stopped
+    return True, "stopping"
+
+
+@app.route("/api/listener/start", methods=["POST"])
+def api_start_listener():
+    started, message = start_listener()
+    if started:
+        print(f"Listener started by {g.user['username']}")
+    return {"started": started, "message": message, "listener": listener_status()}
+
+
+@app.route("/api/listener/stop", methods=["POST"])
+def api_stop_listener():
+    asked, message = stop_listener()
+    if asked:
+        print(f"Listener stop requested by {g.user['username']}")
+    return {"stopping": asked, "message": message, "listener": listener_status()}
+
+
+# ---------------------------------------------------------------- logs & shutting down
+
+LOG_NAMES = ("listener", "dashboard")
+LOG_TAIL_LINES = 300
+
+
+def read_log_tail(name, lines=LOG_TAIL_LINES):
+    """The last `lines` lines of logs/<name>.log, or None if there's none."""
+    path = os.path.join(LOGS_DIR, f"{name}.log")
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            f.seek(max(0, size - 256 * 1024))
+            text = f.read().decode("utf-8", "replace")
+    except OSError:
+        return None
+    return "\n".join(text.splitlines()[-lines:])
+
+
+@app.route("/logs")
+def logs():
+    return render_template("logs.html", logs=[
+        {"name": name, "path": os.path.join("logs", f"{name}.log"), "text": read_log_tail(name)}
+        for name in LOG_NAMES
+    ], tail_lines=LOG_TAIL_LINES)
+
+
+def _exit_soon():
+    """End this process just after the current response has been sent."""
+    import threading
+
+    def _exit():
+        time.sleep(0.5)
+        os._exit(0)
+    threading.Thread(target=_exit, daemon=True).start()
+
+
+@app.route("/shutdown", methods=["GET", "POST"])
+def shutdown():
+    if request.method == "GET":
+        return render_template("shutdown.html", done=None)
+    also_listener = request.form.get("what") == "all"
+    was_running = listener_status()["state"] in ("running", "waiting")
+    listener_asked = stop_listener()[0] if also_listener else False
+    print(f"Dashboard shut down by {g.user['username']}"
+          + (" (and the listener)" if also_listener else ""))
+    _exit_soon()
+    return render_template("shutdown.html", done={"also_listener": also_listener, "was_running": was_running,
+                                                  "listener_asked": listener_asked})
+
+
+@app.route("/api/ping")
+def ping():
+    """Public: lets a second launch find the dashboard that's already running."""
+    return {"app": "ecf-dashboard"}
+
+
+# ---------------------------------------------------------------- accounts & sessions
+
+AUTH = AuthStore(os.environ.get("ECF_USERS_FILE") or os.path.join(CODE_DIR, "config", "users.json"))
+SESSION_COOKIE = "ecf_session"
+_PUBLIC_ENDPOINTS = {"static", "login", "setup"}
+
+
+@app.before_request
+def require_login():
+    """Every page and API call needs a signed-in analyst, except the login
+    and first-run setup pages. Also refuses any POST that a page on another
+    site sent (it can reach 127.0.0.1, but not with our Origin), and the
+    session cookie is SameSite=Strict on top of that."""
+    g.user = None
+    if request.method == "POST":
+        origin = request.headers.get("Origin")
+        if origin and origin.rstrip("/") != request.host_url.rstrip("/"):
+            abort(403)
+    if request.endpoint in ("static", "ping"):
+        return None
+    is_api = request.path.startswith("/api/")
+    if not AUTH.has_users():
+        if request.endpoint == "setup":
+            return None
+        return ({"error": "first-run setup needed"}, 401) if is_api else redirect(url_for("setup"))
+    g.user = AUTH.read_token(request.cookies.get(SESSION_COOKIE))
+    if g.user is None and request.endpoint not in _PUBLIC_ENDPOINTS:
+        if is_api:
+            return {"error": "not signed in"}, 401
+        return redirect(url_for("login", next=request.full_path.rstrip("?")))
+    return None
+
+
+@app.context_processor
+def inject_user():
+    return {"current_user": g.get("user")}
+
+
+def _safe_next(target):
+    """Only ever redirect back into this app after signing in."""
+    if target and target.startswith("/") and not target.startswith("//") and "\\" not in target:
+        return target
+    return None
+
+
+def _signed_in(username, target=None):
+    response = redirect(target or url_for("index"))
+    response.set_cookie(SESSION_COOKIE, AUTH.issue_token(username), max_age=SESSION_HOURS * 3600,
+                        httponly=True, samesite="Strict", path="/")
+    return response
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if not AUTH.has_users():
+        return redirect(url_for("setup"))
+    target = _safe_next(request.values.get("next"))
+    if request.method == "GET" and g.user:
+        return redirect(target or url_for("index"))
+    error, username = None, ""
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        wait = AUTH.locked_for(username)
+        if wait:
+            error = f"Too many wrong passwords for this account. Try again in {wait} s."
+        else:
+            user = AUTH.authenticate(username, request.form.get("password", ""))
+            if user:
+                return _signed_in(user["username"], target)
+            error = "Wrong username or password."
+    return render_template("login.html", error=error, username=username, next=target), (401 if error else 200)
+
+
+@app.route("/setup", methods=["GET", "POST"])
+def setup():
+    """First run only: create the first (admin) account."""
+    if AUTH.has_users():
+        return redirect(url_for("login"))
+    error, username = None, ""
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        if password != request.form.get("confirm", ""):
+            error = "The two passwords don't match."
+        else:
+            try:
+                AUTH.create_user(username, password, role="admin")
+                return _signed_in(username)
+            except AuthError as e:
+                error = str(e)
+    return render_template("setup.html", error=error, username=username), (400 if error else 200)
+
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    response = redirect(url_for("login"))
+    response.delete_cookie(SESSION_COOKIE, path="/")
+    return response
+
+
+@app.route("/users", methods=["GET", "POST"])
+def users():
+    if g.user["role"] != "admin":
+        abort(403)
+    message = error = None
+    if request.method == "POST":
+        action = request.form.get("action")
+        name = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        try:
+            if action == "add":
+                if password != request.form.get("confirm", ""):
+                    raise AuthError("The two passwords don't match.")
+                AUTH.create_user(name, password, role=request.form.get("role", "analyst"))
+                message = f"Added {name}."
+            elif action == "delete":
+                if name == g.user["username"]:
+                    raise AuthError("You can't delete the account you're signed in with.")
+                AUTH.delete_user(name)
+                message = f"Deleted {name}; any open sessions of theirs have ended."
+            elif action == "reset":
+                AUTH.set_password(name, password)
+                message = f"Set a new password for {name}; their open sessions have ended."
+            else:
+                abort(400)
+        except AuthError as e:
+            error = str(e)
+    return render_template("users.html", users=AUTH.list_users(), message=message, error=error)
+
+
+@app.route("/account", methods=["GET", "POST"])
+def account():
+    """Change your own password."""
+    error = None
+    if request.method == "POST":
+        new = request.form.get("password", "")
+        if not AUTH.authenticate(g.user["username"], request.form.get("current", "")):
+            error = "Your current password isn't right."
+        elif new != request.form.get("confirm", ""):
+            error = "The two new passwords don't match."
+        else:
+            try:
+                AUTH.set_password(g.user["username"], new)
+                # The old token is now revoked, so issue a fresh one.
+                return _signed_in(g.user["username"], url_for("account", changed=1))
+            except AuthError as e:
+                error = str(e)
+    return render_template("account.html", error=error, changed=request.args.get("changed") == "1")
 
 
 def _evidence_path(filename):
@@ -809,32 +1462,83 @@ def detail(filename):
         losses={field: loss_explanations(data, field) for field in FIELDS},
         events=story(data),
         ports=port_rows(data),
+        resources=resource_charts(data),
         legacy="timing" not in data,
         kill_start_after_exit=kill_trigger_start_after_exit(data),
         poll_interval=POLL_INTERVAL_SECONDS,
     )
 
 
+def _port_free(port):
+    import socket
+    with socket.socket() as s:
+        # Exclusive bind: without it Windows lets two servers share a port,
+        # and requests land on whichever it likes.
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        try:
+            s.bind(("127.0.0.1", port))
+            return True
+        except OSError:
+            return False
+
+
+def _dashboard_at(port):
+    """True if a current ECF dashboard answers on this port."""
+    import urllib.request
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/ping", timeout=1) as r:
+            return json.load(r).get("app") == "ecf-dashboard"
+    except (OSError, ValueError):
+        return False
+
+
 def main():
     # PORT override lets a dev copy run alongside a packaged one.
     port = int(os.environ.get("PORT", 5000))
+    windowless = getattr(sys, "frozen", False) or "--open" in sys.argv
+
+    if windowless:
+        # No console: print() and any crash go to logs/dashboard.log --
+        # without a line per request (the live panel polls every 2 s).
+        import logging
+        runlog.log_to_file_if_windowless(LOGS_DIR, "dashboard")
+        logging.getLogger("werkzeug").setLevel(logging.WARNING)
+        # Opened twice? Just show the one that's running.
+        # (Only ports in use are asked: a refused connection takes ~1 s on Windows.)
+        running = next((p for p in range(port, port + 20) if not _port_free(p) and _dashboard_at(p)), None)
+        if running is not None:
+            import webbrowser
+            webbrowser.open(f"http://127.0.0.1:{running}")
+            return
+        # Port taken by something else (e.g. an older build): use the next free one.
+        free = next((p for p in range(port, port + 20) if _port_free(p)), None)
+        if free is None:
+            print(f"Ports {port}-{port + 19} are all in use; close something and try again.")
+            sys.exit(1)
+        port = free
     url = f"http://127.0.0.1:{port}"
 
-    if not getattr(sys, "frozen", False):
+    # Opening the dashboard also starts the listener, so evidence is
+    # captured without a second step. Skipped in the debug reloader's
+    # child process (it re-runs this file) and with --no-listener.
+    if "--no-listener" not in sys.argv and os.environ.get("WERKZEUG_RUN_MAIN") != "true":
+        started, message = start_listener()
+        print(f"Listener: {'started in the background' if started else message}")
+
+    if not windowless:
         # Dev mode: keep the familiar debug/auto-reload workflow.
         app.run(host="127.0.0.1", port=port, debug=True)
         return
 
-    # Packaged mode: no debugger/reloader (both assume a live source
-    # tree and a terminal watching it, neither of which exist in a
-    # frozen exe), and open the browser automatically so there's
-    # nothing for the person running it to type or configure.
+    # Packaged mode, or launched by start.vbs (--open): no debugger or
+    # reloader (both assume someone watching a live source tree), and open
+    # the browser automatically -- it's the only thing that appears.
     import threading
     import webbrowser
 
     threading.Timer(1.0, lambda: webbrowser.open(url)).start()
-    print(f"Container Forensics evidence viewer running at {url}")
-    print("Close this window to stop it.")
+    print(f"Dashboard running at {url} (stop it with Shut down in the dashboard)")
     app.run(host="127.0.0.1", port=port, debug=False, use_reloader=False)
 
 

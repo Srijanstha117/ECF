@@ -1,16 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ e.container_name or e._filename }}{% endblock %}
 
-{% block plate_extra %}
-{% if not e._load_error %}
-<dl class="plate-readout">
-    <div><dt>lived</dt><dd>{{ e.container_lifetime_seconds|secs(2) }}</dd></div>
-    <div><dt>ended</dt><dd>{{ ended.label|lower }}</dd></div>
-    <div{% if live != 'saved' %} class="is-alarm"{% endif %}><dt>live evidence</dt><dd>{{ {'saved': 'saved', 'partly': 'partly saved', 'lost': 'lost'}[live] }}</dd></div>
-    <div{% if not e._hash_verified %} class="is-alarm"{% endif %}><dt>hash</dt><dd>{{ 'match' if e._hash_verified else 'MISMATCH' }}</dd></div>
-</dl>
-{% endif %}
-{% endblock %}
 
 {% block content %}
 <nav class="crumbs" aria-label="Breadcrumb">
@@ -67,6 +57,44 @@
     <p class="caption table-caption">Times on the left are seconds after the container started; clock times on the right are UTC. Events without a time are listed last.</p>
     {% else %}
     <p class="plain-note">Not available for old packages: they don't record when things happened.</p>
+    {% endif %}
+</section>
+
+<section class="sheet" aria-labelledby="res-title">
+    <header class="sheet-head">
+        <h2 class="sheet-title" id="res-title">Resource use</h2>
+        {% if resources.status == 'ok' %}<span class="caption">{{ resources.samples }} samples, every {{ resources.interval }} s · seconds since the container started</span>{% endif %}
+    </header>
+    {% if resources.status == 'ok' %}
+    <div class="charts">
+        {% for c in resources.charts %}
+        <figure class="chart">
+            <figcaption>
+                <strong>{{ c.title }}</strong>
+                <span>{{ c.summary }}</span>
+                {% if c.legend %}<span class="chart-legend">{% for l in c.lines %}<span><i class="key {{ l.cls }}" aria-hidden="true"></i>{{ l.label }}</span>{% endfor %}</span>{% endif %}
+            </figcaption>
+            <div class="chart-plot" role="img" aria-label="{{ c.title }} over the container's life: {{ c.summary }}">
+                <div class="chart-y" aria-hidden="true">{% for t in c.y_ticks %}<span style="top: {{ '%.2f'|format(t.y) }}%">{{ t.label }}</span>{% endfor %}</div>
+                <div class="chart-area" aria-hidden="true">
+                    {% for t in c.y_ticks %}<span class="grid-y" style="top: {{ '%.2f'|format(t.y) }}%"></span>{% endfor %}
+                    <span class="exit-line" style="left: {{ '%.2f'|format(resources.exit_x) }}%"></span>
+                    <svg viewBox="0 0 100 100" preserveAspectRatio="none" focusable="false">
+                        {% for l in c.lines %}<polyline class="line {{ l.cls }}" points="{{ l.points }}"/>{% endfor %}
+                    </svg>
+                </div>
+            </div>
+            {% if loop.last %}
+            <div class="chart-x" aria-hidden="true">{% for t in resources.x_ticks %}<span style="left: {{ '%.2f'|format(t.x) }}%">{{ t.label }} s</span>{% endfor %}</div>
+            {% endif %}
+        </figure>
+        {% endfor %}
+    </div>
+    <p class="caption table-caption">The dashed line marks when the container stopped. {{ resources.note }}{% if 'docker exec' not in (resources.note or '') %} Where the poller reads sockets with docker exec (Docker Desktop), that small command's CPU counts here too: about 3–4% of a core on an idle container.{% endif %}</p>
+    {% elif resources.status == 'never_sampled' %}
+    <p class="plain-note">No resource figures: the poller never sampled this container before it stopped.</p>
+    {% else %}
+    <p class="plain-note">Not tracked: this package is from before resource tracking was added.</p>
     {% endif %}
 </section>
 

@@ -30,8 +30,10 @@ from capture import (
     capture_logs,
     capture_network_state,
     capture_process_list,
+    capture_resource_counters,
     get_client,
     is_failure,
+    resource_delta,
 )
 
 POLL_INTERVAL_SECONDS = 0.5  # tunable -- lower = fresher snapshots, more overhead
@@ -45,6 +47,8 @@ _CAPTURE_FIELDS = {
 
 _latest_snapshot = {}
 _lock = threading.Lock()
+_watching = 0  # running containers seen by the last poll cycle (for the listener's heartbeat)
+_running_ids = set()
 _stop_flag = threading.Event()
 
 # Per-container history of every socket (listening port or connection)
@@ -56,6 +60,49 @@ _stop_flag = threading.Event()
 _port_history = {}
 _MAX_SOCKETS_PER_CONTAINER = 500  # a busy server could otherwise grow this without bound
 _SOCKET_FIELDS = ("proto", "local_ip", "local_port", "remote_ip", "remote_port", "kind")
+
+
+# Per-container CPU / memory / network history, one sample per poll cycle,
+# for the evidence ("how hard was it working before it died?"). Kept whole
+# up to _MAX_RESOURCE_SAMPLES, then halved in resolution each time it
+# fills, so a long-lived container keeps its whole life at coarser detail.
+_resources = {}
+_MAX_RESOURCE_SAMPLES = 1200
+
+
+def _record_resources(cid, name, counters, at):
+    """Record one reading. Caller holds _lock."""
+    history = _resources.setdefault(cid, {"name": name, "last": None, "samples": []})
+    last = history["last"]
+    delta = resource_delta(last["counters"], counters, at - last["at"]) if last else None
+    history["last"] = {"counters": counters, "at": at}
+    if delta is None:
+        return  # the first reading only anchors the next one
+    sample = {
+        "at": at,
+        "cpu_pct": delta["cpu_pct"],
+        "mem_bytes": counters["mem_bytes"],
+        "rx_bytes": counters["rx_bytes"],
+        "tx_bytes": counters["tx_bytes"],
+        "rx_rate": delta["rx_rate"],
+        "tx_rate": delta["tx_rate"],
+    }
+    history["samples"].append(sample)
+    history["latest"] = {**sample, "mem_limit_bytes": counters["mem_limit_bytes"], "pids": counters["pids"]}
+    if len(history["samples"]) > _MAX_RESOURCE_SAMPLES:
+        history["samples"] = history["samples"][::2]
+        history["thinned"] = history.get("thinned", 1) * 2
+
+
+def live_resources():
+    """The latest figures for every running container, for the dashboard."""
+    with _lock:
+        return [
+            {"id": cid[:12], "name": h["name"], **{k: v for k, v in h["latest"].items() if k != "at"},
+             "sampled_at": h["latest"]["at"]}
+            for cid, h in _resources.items()
+            if h.get("latest") and cid in _running_ids
+        ]
 
 
 def _socket_key(sock):
@@ -101,11 +148,15 @@ def _update_port_history(cid, sockets, seen_at):
 
 
 def _poll_loop():
+    global _watching, _running_ids
     client = get_client()
     while not _stop_flag.is_set():
         cycle_start = time.time()
         try:
-            for container in client.containers.list():  # running containers only
+            running = client.containers.list()  # running containers only
+            _watching = len(running)
+            _running_ids = {c.id for c in running}
+            for container in running:
                 cid = container.id
                 # Each field is timestamped when ITS capture started.
                 # Previously one timestamp was taken after all four had
@@ -118,8 +169,12 @@ def _poll_loop():
                 for field, fn in _CAPTURE_FIELDS.items():
                     started = time.time()
                     results[field] = (started, fn(cid))
+                resources_at = time.time()
+                counters = capture_resource_counters(cid)
 
                 with _lock:
+                    if counters is not None:
+                        _record_resources(cid, container.name, counters, resources_at)
                     entry = _latest_snapshot.setdefault(cid, {})
                     for field, (started, result) in results.items():
                         if not is_failure(result):
@@ -163,6 +218,11 @@ def stop():
     _stop_flag.set()
 
 
+def watching_count():
+    """How many running containers the last poll cycle covered."""
+    return _watching
+
+
 def get_last_snapshot(container_id, died_at=None):
     """Retrieve the most recent successful pre-death snapshot for a
     container, per field. A field that never succeeded says so
@@ -182,8 +242,16 @@ def get_last_snapshot(container_id, died_at=None):
     with _lock:
         entry = _latest_snapshot.pop(container_id, {})
         history = _port_history.pop(container_id, None)
+        resources = _resources.pop(container_id, None)
 
-    result = {"port_history": _finish_port_history(history)}
+    result = {
+        "port_history": _finish_port_history(history),
+        "resource_history": None if not resources or not resources["samples"] else {
+            "samples": resources["samples"],
+            "mem_limit_bytes": (resources.get("latest") or {}).get("mem_limit_bytes"),
+            "thinned": resources.get("thinned", 1),
+        },
+    }
     for field in _CAPTURE_FIELDS:
         ts_key = f"{field}_snapshot_at"
         if field in entry:
