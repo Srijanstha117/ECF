@@ -3,17 +3,50 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}Evidence{% endblock %} · Ephemeral Container Forensics</title>
+    <title>{% block title %}Dashboard{% endblock %} · ECF evidence review</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body>
-    <header class="plate">
-        <a class="plate-title" href="{{ url_for('index') }}">
-            <span class="plate-name">Ephemeral Container Forensics</span>
-            <span class="plate-sub">Evidence review · read-only</span>
+<body class="{% block body_class %}{% endblock %}">
+    <header class="shell">
+        <a class="shell-name" href="{{ url_for('index') }}">
+            <span class="shell-mark">ECF</span>
+            <span class="shell-product">Ephemeral Container Forensics</span>
         </a>
-        {% block plate_extra %}{% endblock %}
+        {% if current_user %}
+        <nav class="shell-nav" aria-label="Main">
+            <a href="{{ url_for('index') }}"{% if request.endpoint == 'index' %} aria-current="page"{% endif %}>Dashboard</a>
+            <a href="{{ url_for('logs') }}"{% if request.endpoint == 'logs' %} aria-current="page"{% endif %}>Logs</a>
+            {% if current_user.role == 'admin' %}<a href="{{ url_for('users') }}"{% if request.endpoint == 'users' %} aria-current="page"{% endif %}>Users</a>{% endif %}
+        </nav>
+        <form class="shell-search" action="{{ url_for('search') }}" role="search">
+            <label class="visually-hidden" for="shell-q">Search containers</label>
+            <input id="shell-q" name="q" type="search" autocomplete="off"
+                   role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="shell-suggest"
+                   data-suggest-url="{{ url_for('api_search_suggest') }}"
+                   placeholder="Search containers: name, ID, port, date"
+                   value="{{ q if request.endpoint == 'search' else '' }}">
+            <ul class="suggest" id="shell-suggest" role="listbox" aria-label="Suggestions" hidden></ul>
+            <p class="visually-hidden" id="shell-suggest-status" role="status" aria-live="polite"></p>
+        </form>
+        <p class="listener listener-{{ listener.state }}" id="listener-status" role="status" aria-live="polite"
+           data-evidence-sig="{{ evidence_sig }}" data-status-url="{{ url_for('api_status') }}">
+            <span class="listener-dot" aria-hidden="true"></span>
+            <span class="listener-label">{{ listener.label }}</span>
+            <span class="listener-sub">{{ listener.sub }}</span>
+            <button class="listener-start" type="button" data-start-url="{{ url_for('api_start_listener') }}"{% if listener.state in ('running', 'waiting') %} hidden{% endif %}>Start listener</button>
+            <button class="listener-stop" type="button" data-stop-url="{{ url_for('api_stop_listener') }}"
+                    title="Stop capturing evidence"{% if listener.state not in ('running', 'waiting') %} hidden{% endif %}>Stop</button>
+            <a class="listener-refresh" href="" hidden>New evidence: refresh</a>
+        </p>
+        <div class="shell-user">
+            <a href="{{ url_for('account') }}" title="Your account">{{ current_user.username }}</a>
+            <span class="shell-role">{{ current_user.role }}</span>
+            <form method="post" action="{{ url_for('logout') }}"><button class="shell-signout" type="submit">Sign out</button></form>
+            <a class="shell-signout shell-shutdown" href="{{ url_for('shutdown') }}" title="Stop the dashboard (and, if you choose, the listener)">Shut down</a>
+        </div>
+        {% endif %}
     </header>
+    {% block subbar %}{% endblock %}
     <main>
         {% block content %}{% endblock %}
     </main>

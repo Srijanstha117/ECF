@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Your account{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Your account</h1>
+        <p class="page-sub">Signed in as <strong>{{ current_user.username }}</strong> ({{ current_user.role }}). This session ends {{ (current_user.expires - 0)|format_ts }}.</p>
+    </div>
+</div>
+
+{% if changed %}<p class="notice notice-success" role="status">Password changed. Your other sessions have been signed out.</p>{% endif %}
+{% if error %}<p class="notice notice-error" role="alert">{{ error }}</p>{% endif %}
+
+<section class="panel panel-narrow" aria-labelledby="pw-title">
+    <header class="panel-head"><h2 class="panel-title" id="pw-title">Change password</h2></header>
+    <form method="post" class="form panel-body">
+        <label class="field-label" for="current">Current password</label>
+        <input class="field" id="current" name="current" type="password" autocomplete="current-password" required>
+        <label class="field-label" for="password">New password <span class="field-hint">at least 8 characters</span></label>
+        <input class="field" id="password" name="password" type="password" minlength="8" autocomplete="new-password" required>
+        <label class="field-label" for="confirm">Type it again</label>
+        <input class="field" id="confirm" name="confirm" type="password" minlength="8" autocomplete="new-password" required>
+        <button class="button button-primary" type="submit">Change password</button>
+    </form>
+</section>
+{% endblock %}

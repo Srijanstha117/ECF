@@ -264,6 +264,51 @@ def capture_network_state(container_id):
     return result
 
 
+def capture_resource_counters(container_id):
+    """Raw CPU / memory / network counters for a running container, from
+    Docker's one-shot stats (~10 ms; the normal stats call waits a full
+    second for a second sample). CPU is a cumulative counter, so a CPU %
+    needs two of these -- see resource_delta(). Returns None on failure."""
+    try:
+        s = get_client().api.stats(container_id, stream=False, one_shot=True)
+    except Exception:
+        return None
+    cpu = s.get("cpu_stats") or {}
+    usage = (cpu.get("cpu_usage") or {}).get("total_usage")
+    if usage is None or not s.get("read", "").startswith(("1", "2")):
+        return None  # a stopped container reports zeros with a 0001-01-01 read time
+    mem = s.get("memory_stats") or {}
+    stats = mem.get("stats") or {}
+    # Like `docker stats`: page cache that can be reclaimed isn't "used".
+    cache = stats.get("inactive_file", stats.get("total_inactive_file", 0))
+    networks = s.get("networks") or {}
+    return {
+        "cpu_total_ns": usage,
+        "system_cpu_ns": cpu.get("system_cpu_usage"),
+        "online_cpus": cpu.get("online_cpus") or len((cpu.get("cpu_usage") or {}).get("percpu_usage") or []) or 1,
+        "mem_bytes": max(0, (mem.get("usage") or 0) - cache),
+        "mem_limit_bytes": mem.get("limit"),
+        "rx_bytes": sum(n.get("rx_bytes", 0) for n in networks.values()),
+        "tx_bytes": sum(n.get("tx_bytes", 0) for n in networks.values()),
+        "pids": (s.get("pids_stats") or {}).get("current"),
+    }
+
+
+def resource_delta(previous, current, seconds):
+    """CPU % (100 = one full core, as `docker stats` shows it) and network
+    rates between two counter readings, or None for the first reading."""
+    if previous is None or seconds <= 0:
+        return None
+    cpu_d = current["cpu_total_ns"] - previous["cpu_total_ns"]
+    sys_d = (current["system_cpu_ns"] or 0) - (previous["system_cpu_ns"] or 0)
+    cpu_pct = cpu_d / sys_d * current["online_cpus"] * 100 if sys_d > 0 and cpu_d >= 0 else 0.0
+    return {
+        "cpu_pct": round(cpu_pct, 2),
+        "rx_rate": max(0.0, (current["rx_bytes"] - previous["rx_bytes"]) / seconds),
+        "tx_rate": max(0.0, (current["tx_bytes"] - previous["tx_bytes"]) / seconds),
+    }
+
+
 def is_failure(result):
     """True if a capture result is an error placeholder rather than
     real data. Shared between listener.py and poller.py so both agree
@@ -365,22 +410,3 @@ def hash_evidence(evidence_dict):
     canonical = json.dumps(evidence_dict, sort_keys=True, default=str).encode()
     return hashlib.sha256(canonical).hexdigest()
 
-
-def build_evidence_package(container_id, container_name):
-    """Pull every evidence type and package it with metadata + hash.
-
-    Order matters here: network state is the most volatile (see the
-    docstring above), so it's captured first, before anything else has
-    a chance to slow things down.
-    """
-    evidence = {
-        "container_id": container_id,
-        "container_name": container_name,
-        "captured_at": time.time(),
-        "network_state": capture_network_state(container_id),
-        "process_list": capture_process_list(container_id),
-        "filesystem_diff": capture_filesystem_diff(container_id),
-        "logs": capture_logs(container_id),
-    }
-    evidence["sha256"] = hash_evidence(evidence)
-    return evidence

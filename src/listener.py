@@ -24,19 +24,24 @@ All three are merged into ONE evidence package per container, with
 each field labeled with exactly which source supplied it -- that
 provenance is real evaluation data, not just plumbing.
 
-Run with:   python listener.py
-Stop with:  Ctrl+C (or just close the terminal window -- see the note
-            we discussed about Windows sometimes delaying Ctrl+C on a
-            blocked network read).
+Run with:   python listener.py              (in a terminal, prints as it goes)
+            pythonw listener.py --background (no window: what the dashboard
+                                              starts; output goes to logs/listener.log)
+Stop with:  Ctrl+C in the terminal, or the dashboard's "Stop listener"
+            button (it drops a stop-request file this process watches for).
 """
 
 import itertools
 import json
 import os
+import subprocess
+import sys
 import tempfile
+import threading
 import time
 
 import poller
+import runlog
 from capture import (
     capture_filesystem_diff,
     capture_logs,
@@ -53,10 +58,114 @@ from capture import (
 
 EVIDENCE_DIR = os.path.join(os.path.dirname(__file__), "..", "evidence")
 os.makedirs(EVIDENCE_DIR, exist_ok=True)
+LOGS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "logs")
+
+# Started with --background (by the dashboard, with no window): log to a
+# file, wait for Docker instead of failing, and start Docker Desktop.
+BACKGROUND = "--background" in sys.argv
 
 # Evidence captured on "kill", keyed by container_id, held until "die"
 # fires for the same container.
 _pending_live_capture = {}
+
+# ---------------------------------------------------------------- heartbeat
+# While running, the listener rewrites a small status file every couple of
+# seconds. The dashboard reads it to show "Listener running" or "not
+# running, last seen ...", and a second listener refuses to start while
+# it's fresh (two listeners capture every death twice). The dot-prefixed
+# name keeps it out of the dashboard's evidence list (*.json skips it).
+HEARTBEAT_PATH = os.path.join(EVIDENCE_DIR, ".listener.json")
+HEARTBEAT_SECONDS = 2
+HEARTBEAT_STALE_SECONDS = 6
+_started_at = time.time()
+_saved = {"count": 0, "last_file": None, "last_at": None}
+
+
+def _write_heartbeat(state):
+    data = {
+        "state": state,
+        "pid": os.getpid(),
+        "started_at": _started_at,
+        "last_beat": time.time(),
+        "heartbeat_seconds": HEARTBEAT_SECONDS,
+        "poll_interval_seconds": poller.POLL_INTERVAL_SECONDS,
+        "watching": poller.watching_count(),
+        "live": poller.live_resources(),
+        "evidence_saved": _saved["count"],
+        "last_evidence_file": _saved["last_file"],
+        "last_evidence_at": _saved["last_at"],
+    }
+    tmp = HEARTBEAT_PATH + ".tmp"
+    try:
+        with open(tmp, "w") as f:
+            json.dump(data, f)
+        os.replace(tmp, HEARTBEAT_PATH)
+    except OSError:
+        pass  # e.g. the dashboard had it open for a moment; the next beat retries
+
+
+# With no window to close, the dashboard's "Stop listener" button asks for
+# a stop by creating this file; the heartbeat loop notices it within
+# HEARTBEAT_SECONDS. A request older than this listener is ignored.
+STOP_REQUEST_PATH = os.path.join(EVIDENCE_DIR, ".listener.stop")
+_stopping = threading.Event()
+_events_stream = None
+
+
+def stop_requested():
+    try:
+        return os.path.getmtime(STOP_REQUEST_PATH) >= _started_at - 1
+    except OSError:
+        return False
+
+
+def _clear_stop_request():
+    try:
+        os.remove(STOP_REQUEST_PATH)
+    except OSError:
+        pass
+
+
+def _heartbeat_loop(stop):
+    while not stop.wait(HEARTBEAT_SECONDS):
+        if stop_requested():
+            _clear_stop_request()
+            print("[*] Stop requested from the dashboard.")
+            _stop_event_loop()
+            return
+        _write_heartbeat("running")
+
+
+def _stop_event_loop():
+    """End _event_loop from another thread: closing Docker's event stream
+    unblocks it. If that doesn't work within 5 s, exit outright -- any
+    save in progress is atomic (see save_evidence), so nothing half-written
+    is left behind."""
+    _stopping.set()
+    if _events_stream is not None:
+        try:
+            _events_stream.close()
+        except Exception:
+            pass
+
+    def _force():
+        time.sleep(5)
+        _write_heartbeat("stopped")
+        os._exit(0)
+    threading.Thread(target=_force, daemon=True).start()
+
+
+def other_listener_running():
+    """The heartbeat of another live listener, or None."""
+    try:
+        with open(HEARTBEAT_PATH) as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return None
+    fresh = time.time() - data.get("last_beat", 0) < HEARTBEAT_STALE_SECONDS
+    if data.get("state") in ("running", "waiting_docker") and fresh and data.get("pid") != os.getpid():
+        return data
+    return None
 
 
 def save_evidence(evidence):
@@ -83,6 +192,7 @@ def save_evidence(evidence):
     finally:
         os.unlink(tmp_path)
     print(f"[+] Evidence saved: {path}")
+    _saved.update(count=_saved["count"] + 1, last_file=os.path.basename(path), last_at=time.time())
     return path
 
 
@@ -277,6 +387,47 @@ def _port_timeline(history, lifetime, death_time_host):
     }
 
 
+def _resource_timeline(history, lifetime, death_time_host):
+    """CPU %, memory and network over the container's life, one sample per
+    poll, with times in seconds since start (when the time of death is
+    known on this host's clock) and the raw host-clock time. Also the
+    peaks and totals, so the headline figures don't need recomputing."""
+    note = (f"Sampled by the poller every {poller.POLL_INTERVAL_SECONDS} s from Docker's stats. "
+            "CPU % is relative to one core (200% = two cores busy); memory excludes reclaimable page cache. "
+            "Where the poller reads sockets with docker exec (Docker Desktop), that small command runs "
+            "inside the container and its CPU counts here: about 3-4% of a core on an idle container in testing.")
+    if not history:
+        return {"error": "the poller never sampled this container's resource use before it died", "note": note}
+
+    def since_start(t):
+        if lifetime is None or death_time_host is None:
+            return None
+        return round(lifetime - (death_time_host - t), 4)
+
+    samples = [{
+        "t_s": since_start(x["at"]),
+        "at": x["at"],
+        "cpu_pct": x["cpu_pct"],
+        "mem_bytes": x["mem_bytes"],
+        "rx_bytes": x["rx_bytes"],
+        "tx_bytes": x["tx_bytes"],
+        "rx_rate": round(x["rx_rate"], 1),
+        "tx_rate": round(x["tx_rate"], 1),
+    } for x in history["samples"]]
+    return {
+        "source": "poller stats",
+        "interval_seconds": poller.POLL_INTERVAL_SECONDS * history.get("thinned", 1),
+        "mem_limit_bytes": history.get("mem_limit_bytes"),
+        "peak_cpu_pct": max(x["cpu_pct"] for x in samples),
+        "avg_cpu_pct": round(sum(x["cpu_pct"] for x in samples) / len(samples), 2),
+        "peak_mem_bytes": max(x["mem_bytes"] for x in samples),
+        "total_rx_bytes": samples[-1]["rx_bytes"],
+        "total_tx_bytes": samples[-1]["tx_bytes"],
+        "note": note,
+        "samples": samples,
+    }
+
+
 def handle_kill(container_id, container_name, kill_event_time_ns, signal):
     """Reactive, best-effort: race to capture live-only evidence
     before the process actually exits. Known to lose against SIGKILL;
@@ -445,16 +596,93 @@ def handle_die(container_id, container_name, die_event_time_ns, exit_code=None):
         container_lifetime_seconds,
         timing["death_time_host_clock"] if death_host_reliable else None,
     )
+    evidence["resource_timeline"] = _resource_timeline(
+        snapshot.get("resource_history"),
+        container_lifetime_seconds,
+        timing["death_time_host_clock"] if death_host_reliable else None,
+    )
 
     evidence["sha256"] = hash_evidence(evidence)
     save_evidence(evidence)
 
 
 def main():
-    client = get_client()
+    other = other_listener_running()
+    if other and "--force" not in sys.argv:
+        print(f"[!] Another listener is already running (PID {other['pid']}). Running two captures "
+              "every container death twice. Stop the other one first, or pass --force.")
+        sys.exit(1)
+
+    _clear_stop_request()  # a leftover request is not meant for this listener
+
+    # Started by the dashboard, Docker Desktop may not be up yet: start it,
+    # then wait (saying so in the heartbeat) instead of crashing.
+    _write_heartbeat("waiting_docker")
+    launched_docker = False
+    while True:
+        try:
+            client = get_client()
+            client.ping()
+            break
+        except Exception as e:
+            if not BACKGROUND:
+                raise
+            if stop_requested():
+                _clear_stop_request()
+                print("[*] Stop requested while waiting for Docker.")
+                return
+            if not launched_docker:
+                launched_docker = True
+                if start_docker_desktop():
+                    print("[*] Docker isn't running -- started Docker Desktop.")
+            print(f"[*] Waiting for Docker ({str(e).splitlines()[0][:90]})")
+            _write_heartbeat("waiting_docker")
+            time.sleep(3)
+
     poller.start()
-    print("[*] Listening for container lifecycle events... (Ctrl+C to stop)")
-    for event in client.events(decode=True):
+    stop = threading.Event()
+    _write_heartbeat("running")
+    threading.Thread(target=_heartbeat_loop, args=(stop,), daemon=True).start()
+    print("[*] Listening for container lifecycle events...")
+    try:
+        _event_loop(client)
+    except Exception:
+        if not _stopping.is_set():
+            raise  # a real failure; a requested stop just breaks the stream
+    finally:
+        stop.set()
+        _write_heartbeat("stopped")
+        print("[*] Stopped.")
+
+
+DOCKER_DESKTOP_PATHS = [
+    os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "Docker", "Docker", "Docker Desktop.exe"),
+]
+
+
+def start_docker_desktop():
+    """Start Docker Desktop if it's installed (Windows / macOS). Returns
+    True if something was launched."""
+    try:
+        if os.name == "nt":
+            exe = next((p for p in DOCKER_DESKTOP_PATHS if os.path.exists(p)), None)
+            if exe:
+                subprocess.Popen([exe], creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                return True
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", "-a", "Docker"])
+            return True
+    except OSError as e:
+        print(f"[!] Couldn't start Docker Desktop: {e}")
+    return False
+
+
+def _event_loop(client):
+    global _events_stream
+    _events_stream = client.events(decode=True)
+    for event in _events_stream:
+        if _stopping.is_set():
+            break
         if event.get("Type") != "container":
             continue
 
@@ -476,7 +704,14 @@ def main():
 
 
 if __name__ == "__main__":
+    # No window (pythonw / --background): print() and any crash go to
+    # logs/listener.log, which the dashboard's Logs page shows.
+    runlog.log_to_file_if_windowless(LOGS_DIR, "listener")
     try:
         main()
     except KeyboardInterrupt:
-        print("\n[*] Stopped.")
+        pass  # main() has already said "Stopped."
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

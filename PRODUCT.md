@@ -18,6 +18,7 @@ A read-only local dashboard over the evidence packages (`evidence/*.json`) produ
 - which capture path supplied each field (live kill-trigger, poller snapshot, or lost);
 - how stale rescued evidence was at the moment of death;
 - which ports and connections were open, and when each opened and closed (from the poller's history, as windows);
+- how hard it was working: CPU, memory and network I/O over its life, and live for containers still running;
 - whether the package's integrity hash still matches.
 
 Success: a reviewer can tell at a glance what was rescued, what was lost and why, and whether the package has changed since capture.
@@ -32,7 +33,7 @@ Evidence from ephemeral containers is gone the moment they die, unless it was ca
 - Must work fully offline on any OS (Windows, Linux, macOS). No CDN or remote assets; fonts must be bundled with the app or come from system stacks.
 - Flask + Jinja templates, one stylesheet, minimal vanilla JS, no build step.
 - Reads `evidence/*.json` next to `gui/`; subfolders are ignored (used for archives). The hash is re-verified on every page load.
-- Tens of evidence files today; a Phase 3 sweep could produce hundreds.
+- A handful of evidence files today; a Phase 3 sweep could produce hundreds.
 - Used live during experiments, and projected or screenshotted for the viva and the written report.
 
 ## Capabilities and Constraints
@@ -44,6 +45,9 @@ Evidence from ephemeral containers is gone the moment they die, unless it was ca
   - `none -- both ... failed`, carrying `live_attempt` and `snapshot_attempt` errors.
 - **`timing` block** (packages captured from 2026-09-26): death-time source (FinishedAt / SIGKILL event / die-event fallback), exit→die event delay, daemon clock offset ± uncertainty, container lifetime. Packages without it are **legacy**: lifetime and ages are overstated by ~0.3s. Legacy data must never be mixed with corrected data in any aggregate or chart.
 - **`port_timeline`** (packages from 2026-09-26 ~20:00 on): every port and connection the poller saw, with opened-between and closed-between windows in seconds since start plus raw clock times. Older packages say "not tracked".
+- **Accounts (2026-09-27):** the dashboard needs a sign-in. Several analyst accounts, roles admin/analyst, created by an admin; the first run creates the first admin. Sessions are JWTs (HS256, 8 h) in an HttpOnly SameSite=Strict cookie; password hashes (scrypt) and the signing secret live in `config/users.json`, never in git.
+- **`resource_timeline`** (from 2026-09-27): CPU %, memory and network in/out sampled every poll, with peaks and totals. Live figures reach the dashboard through the listener's heartbeat; the dashboard itself never talks to Docker.
+- **Look:** a dark "tactical dashboard" based on the IBM Carbon Gray 100 theme (user choice via getdesign.md); inspired by, not affiliated with IBM.
 - **Plain language first** (user feedback, 2026-09-26: the train-graph charts were "not so understandable"): every view states its finding in words before any chart, and charts are limited to forms a first-time reader gets without explanation.
 - **Unreadable files:** empty or corrupt files must appear as visible entries, never crash a view.
 - **Security:** path traversal is rejected; only bare `.json` filenames are served.
@@ -53,7 +57,7 @@ Evidence from ephemeral containers is gone the moment they die, unless it was ca
 
 ## Evidence on Hand
 
-- Real evidence packages in `code/evidence/`: 18 corrected trials (5 of them `--rm`; the 2 newest also record when the kill-trigger capture started), 14 legacy trials, 1 unreadable 0-byte file.
+- Real evidence packages in `code/evidence/`: 2 current packages as of 2026-09-27, after older trials and test captures were cleared out. New ones arrive with each experiment; the Phase 3 sweep will add many more.
 - Empirical findings and history in `PROJECT_CONTEXT.md` §3 and §5.
 - No logo, brand assets, or product name exist. Do not invent them.
 
