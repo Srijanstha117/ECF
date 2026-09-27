@@ -1,0 +1,24 @@
+# Python environments (recreate with: python -m venv venv && pip install -r requirements.txt)
+venv/
+src/venv/
+.venv/
+__pycache__/
+*.pyc
+
+# PyInstaller working folders (the finished gui/ContainerForensicsGUI.exe is kept)
+gui/build/
+gui/dist/
+
+# Evidence: captured packages are kept; archives of removed/superseded
+# packages and in-progress temp files are not
+evidence/archive_*/
+evidence/.*.tmp
+
+# OS / editor noise
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/
+
+# design-tool decision-page state (session scratch)
+.impeccable/questions/

@@ -1,0 +1,451 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-26T14:30:25+00:00",
+  "title": "Design System: Ephemeral Container Forensics — Evidence Review",
+  "extensions": {
+    "colorMeta": {
+      "saved": {
+        "role": "primary",
+        "displayName": "Saved",
+        "canonical": "oklch(46.7% 0.169 263.3)",
+        "tonalRamp": [
+          "oklch(15.0% 0.169 263.3)",
+          "oklch(26.4% 0.169 263.3)",
+          "oklch(37.9% 0.169 263.3)",
+          "oklch(49.3% 0.169 263.3)",
+          "oklch(60.7% 0.169 263.3)",
+          "oklch(72.1% 0.169 263.3)",
+          "oklch(83.6% 0.169 263.3)",
+          "oklch(95.0% 0.169 263.3)"
+        ]
+      },
+      "saved-soft": {
+        "role": "primary",
+        "displayName": "Saved Soft",
+        "canonical": "oklch(77.0% 0.074 264.7)",
+        "tonalRamp": [
+          "oklch(15.0% 0.074 264.7)",
+          "oklch(26.4% 0.074 264.7)",
+          "oklch(37.9% 0.074 264.7)",
+          "oklch(49.3% 0.074 264.7)",
+          "oklch(60.7% 0.074 264.7)",
+          "oklch(72.1% 0.074 264.7)",
+          "oklch(83.6% 0.074 264.7)",
+          "oklch(95.0% 0.074 264.7)"
+        ]
+      },
+      "poll": {
+        "role": "secondary",
+        "displayName": "Poll",
+        "canonical": "oklch(63.2% 0.184 42.5)",
+        "tonalRamp": [
+          "oklch(15.0% 0.184 42.5)",
+          "oklch(26.4% 0.184 42.5)",
+          "oklch(37.9% 0.184 42.5)",
+          "oklch(49.3% 0.184 42.5)",
+          "oklch(60.7% 0.184 42.5)",
+          "oklch(72.1% 0.184 42.5)",
+          "oklch(83.6% 0.184 42.5)",
+          "oklch(95.0% 0.184 42.5)"
+        ]
+      },
+      "poll-text": {
+        "role": "secondary",
+        "displayName": "Poll Text",
+        "canonical": "oklch(50.6% 0.152 42.4)",
+        "tonalRamp": [
+          "oklch(15.0% 0.152 42.4)",
+          "oklch(26.4% 0.152 42.4)",
+          "oklch(37.9% 0.152 42.4)",
+          "oklch(49.3% 0.152 42.4)",
+          "oklch(60.7% 0.152 42.4)",
+          "oklch(72.1% 0.152 42.4)",
+          "oklch(83.6% 0.152 42.4)",
+          "oklch(95.0% 0.152 42.4)"
+        ]
+      },
+      "alarm-red": {
+        "role": "tertiary",
+        "displayName": "Alarm Red",
+        "canonical": "oklch(50.0% 0.182 29.5)",
+        "tonalRamp": [
+          "oklch(15.0% 0.182 29.5)",
+          "oklch(26.4% 0.182 29.5)",
+          "oklch(37.9% 0.182 29.5)",
+          "oklch(49.3% 0.182 29.5)",
+          "oklch(60.7% 0.182 29.5)",
+          "oklch(72.1% 0.182 29.5)",
+          "oklch(83.6% 0.182 29.5)",
+          "oklch(95.0% 0.182 29.5)"
+        ]
+      },
+      "alarm-on-plate": {
+        "role": "tertiary",
+        "displayName": "Alarm on Plate",
+        "canonical": "oklch(75.9% 0.144 26.1)",
+        "tonalRamp": [
+          "oklch(15.0% 0.144 26.1)",
+          "oklch(26.4% 0.144 26.1)",
+          "oklch(37.9% 0.144 26.1)",
+          "oklch(49.3% 0.144 26.1)",
+          "oklch(60.7% 0.144 26.1)",
+          "oklch(72.1% 0.144 26.1)",
+          "oklch(83.6% 0.144 26.1)",
+          "oklch(95.0% 0.144 26.1)"
+        ]
+      },
+      "plate-slate": {
+        "role": "neutral",
+        "displayName": "Plate Slate",
+        "canonical": "oklch(24.5% 0.029 255.2)",
+        "tonalRamp": [
+          "oklch(15.0% 0.029 255.2)",
+          "oklch(26.4% 0.029 255.2)",
+          "oklch(37.9% 0.029 255.2)",
+          "oklch(49.3% 0.029 255.2)",
+          "oklch(60.7% 0.029 255.2)",
+          "oklch(72.1% 0.029 255.2)",
+          "oklch(83.6% 0.029 255.2)",
+          "oklch(95.0% 0.029 255.2)"
+        ]
+      },
+      "plate-text-soft": {
+        "role": "neutral",
+        "displayName": "Plate Text Soft",
+        "canonical": "oklch(76.6% 0.024 254.4)",
+        "tonalRamp": [
+          "oklch(15.0% 0.024 254.4)",
+          "oklch(26.4% 0.024 254.4)",
+          "oklch(37.9% 0.024 254.4)",
+          "oklch(49.3% 0.024 254.4)",
+          "oklch(60.7% 0.024 254.4)",
+          "oklch(72.1% 0.024 254.4)",
+          "oklch(83.6% 0.024 254.4)",
+          "oklch(95.0% 0.024 254.4)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "oklch(23.7% 0.015 256.8)",
+        "tonalRamp": [
+          "oklch(15.0% 0.015 256.8)",
+          "oklch(26.4% 0.015 256.8)",
+          "oklch(37.9% 0.015 256.8)",
+          "oklch(49.3% 0.015 256.8)",
+          "oklch(60.7% 0.015 256.8)",
+          "oklch(72.1% 0.015 256.8)",
+          "oklch(83.6% 0.015 256.8)",
+          "oklch(95.0% 0.015 256.8)"
+        ]
+      },
+      "ink-soft": {
+        "role": "neutral",
+        "displayName": "Ink Soft",
+        "canonical": "oklch(48.5% 0.023 253.0)",
+        "tonalRamp": [
+          "oklch(15.0% 0.023 253.0)",
+          "oklch(26.4% 0.023 253.0)",
+          "oklch(37.9% 0.023 253.0)",
+          "oklch(49.3% 0.023 253.0)",
+          "oklch(60.7% 0.023 253.0)",
+          "oklch(72.1% 0.023 253.0)",
+          "oklch(83.6% 0.023 253.0)",
+          "oklch(95.0% 0.023 253.0)"
+        ]
+      },
+      "lost": {
+        "role": "neutral",
+        "displayName": "Lost",
+        "canonical": "oklch(55.6% 0.022 255.6)",
+        "tonalRamp": [
+          "oklch(15.0% 0.022 255.6)",
+          "oklch(26.4% 0.022 255.6)",
+          "oklch(37.9% 0.022 255.6)",
+          "oklch(49.3% 0.022 255.6)",
+          "oklch(60.7% 0.022 255.6)",
+          "oklch(72.1% 0.022 255.6)",
+          "oklch(83.6% 0.022 255.6)",
+          "oklch(95.0% 0.022 255.6)"
+        ]
+      },
+      "rule": {
+        "role": "neutral",
+        "displayName": "Rule",
+        "canonical": "oklch(86.4% 0.012 252.1)",
+        "tonalRamp": [
+          "oklch(15.0% 0.012 252.1)",
+          "oklch(26.4% 0.012 252.1)",
+          "oklch(37.9% 0.012 252.1)",
+          "oklch(49.3% 0.012 252.1)",
+          "oklch(60.7% 0.012 252.1)",
+          "oklch(72.1% 0.012 252.1)",
+          "oklch(83.6% 0.012 252.1)",
+          "oklch(95.0% 0.012 252.1)"
+        ]
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "oklch(92.6% 0.008 253.9)",
+        "tonalRamp": [
+          "oklch(15.0% 0.008 253.9)",
+          "oklch(26.4% 0.008 253.9)",
+          "oklch(37.9% 0.008 253.9)",
+          "oklch(49.3% 0.008 253.9)",
+          "oklch(60.7% 0.008 253.9)",
+          "oklch(72.1% 0.008 253.9)",
+          "oklch(83.6% 0.008 253.9)",
+          "oklch(95.0% 0.008 253.9)"
+        ]
+      },
+      "sheet": {
+        "role": "neutral",
+        "displayName": "Sheet",
+        "canonical": "oklch(100.0% 0.000 89.9)",
+        "tonalRamp": [
+          "oklch(15.0% 0.000 89.9)",
+          "oklch(26.4% 0.000 89.9)",
+          "oklch(37.9% 0.000 89.9)",
+          "oklch(49.3% 0.000 89.9)",
+          "oklch(60.7% 0.000 89.9)",
+          "oklch(72.1% 0.000 89.9)",
+          "oklch(83.6% 0.000 89.9)",
+          "oklch(95.0% 0.000 89.9)"
+        ]
+      },
+      "ground": {
+        "role": "neutral",
+        "displayName": "Ground",
+        "canonical": "oklch(95.1% 0.005 247.9)",
+        "tonalRamp": [
+          "oklch(15.0% 0.005 247.9)",
+          "oklch(26.4% 0.005 247.9)",
+          "oklch(37.9% 0.005 247.9)",
+          "oklch(49.3% 0.005 247.9)",
+          "oklch(60.7% 0.005 247.9)",
+          "oklch(72.1% 0.005 247.9)",
+          "oklch(83.6% 0.005 247.9)",
+          "oklch(95.0% 0.005 247.9)"
+        ]
+      },
+      "data-well": {
+        "role": "neutral",
+        "displayName": "Data Well",
+        "canonical": "oklch(97.6% 0.003 264.5)",
+        "tonalRamp": [
+          "oklch(15.0% 0.003 264.5)",
+          "oklch(26.4% 0.003 264.5)",
+          "oklch(37.9% 0.003 264.5)",
+          "oklch(49.3% 0.003 264.5)",
+          "oklch(60.7% 0.003 264.5)",
+          "oklch(72.1% 0.003 264.5)",
+          "oklch(83.6% 0.003 264.5)",
+          "oklch(95.0% 0.003 264.5)"
+        ]
+      },
+      "hot": {
+        "role": "neutral",
+        "displayName": "Hot Row",
+        "canonical": "oklch(96.8% 0.041 90.2)",
+        "tonalRamp": [
+          "oklch(15.0% 0.041 90.2)",
+          "oklch(26.4% 0.041 90.2)",
+          "oklch(37.9% 0.041 90.2)",
+          "oklch(49.3% 0.041 90.2)",
+          "oklch(60.7% 0.041 90.2)",
+          "oklch(72.1% 0.041 90.2)",
+          "oklch(83.6% 0.041 90.2)",
+          "oklch(95.0% 0.041 90.2)"
+        ]
+      },
+      "control-edge": {
+        "role": "neutral",
+        "displayName": "Control Edge",
+        "canonical": "oklch(61.9% 0.022 253.0)",
+        "tonalRamp": [
+          "oklch(15.0% 0.022 253.0)",
+          "oklch(26.4% 0.022 253.0)",
+          "oklch(37.9% 0.022 253.0)",
+          "oklch(49.3% 0.022 253.0)",
+          "oklch(60.7% 0.022 253.0)",
+          "oklch(72.1% 0.022 253.0)",
+          "oklch(83.6% 0.022 253.0)",
+          "oklch(95.0% 0.022 253.0)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "plate-title": {
+        "displayName": "Plate title",
+        "purpose": "Working title on the header plate."
+      },
+      "display": {
+        "displayName": "Display",
+        "purpose": "Container name on a detail page."
+      },
+      "figure": {
+        "displayName": "Figure",
+        "purpose": "Headline numbers."
+      },
+      "lede": {
+        "displayName": "Lede",
+        "purpose": "The result sentence."
+      },
+      "readout": {
+        "displayName": "Readout",
+        "purpose": "Figures in the header plate."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Sheet and section titles."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Table headers, fact labels, chart captions."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Prose, list cells and captions."
+      },
+      "data": {
+        "displayName": "Data",
+        "purpose": "Machine output only: names, hashes, IDs, clock times, raw tables, logs."
+      },
+      "symbol": {
+        "displayName": "Symbol",
+        "purpose": "Sort arrows and the +/- disclosure marker."
+      }
+    },
+    "shadows": [],
+    "motion": [],
+    "breakpoints": [
+      {
+        "name": "phone",
+        "value": "640px"
+      },
+      {
+        "name": "list-scroll",
+        "value": "760px"
+      },
+      {
+        "name": "result-stack",
+        "value": "900px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Header Plate",
+      "kind": "nav",
+      "refersTo": "plate",
+      "description": "Slate band on every screen: condensed caps title, orange underline, readout on the right.",
+      "html": "<header class=\"ds-plate\"><a class=\"ds-plate-name\" href=\"#\">Ephemeral Container Forensics</a><span class=\"ds-plate-sub\">Evidence review · read-only</span></header>",
+      "css": ".ds-plate{display:flex;align-items:baseline;gap:12px;padding:12px 24px;background:#17212E;color:#fff;border-bottom:3px solid #E0590F}.ds-plate-name{color:#fff;text-decoration:none;font:700 19px/1.2 Bahnschrift,'DIN Alternate','Roboto Condensed','Arial Narrow',sans-serif;font-stretch:semi-condensed;letter-spacing:.02em;text-transform:uppercase}.ds-plate-name:focus-visible{outline:2px solid #fff;outline-offset:2px}.ds-plate-sub{color:#A9B4C2;font:12.5px system-ui,sans-serif}"
+    },
+    {
+      "name": "Dataset Switch",
+      "kind": "chip",
+      "refersTo": "switch-option",
+      "description": "Two-position lever between current and old (legacy) packages; the two are never mixed.",
+      "html": "<nav class=\"ds-switch\"><a href=\"#\" aria-current=\"page\">Current <span>21</span></a><a href=\"#\">Old (legacy) <span>14</span></a></nav>",
+      "css": ".ds-switch{display:inline-flex;border:1px solid #1A1F26;border-radius:2px}.ds-switch a{padding:5px 12px;color:#1A1F26;text-decoration:none;font:600 12.5px Bahnschrift,'DIN Alternate','Roboto Condensed','Arial Narrow',sans-serif;letter-spacing:.05em;text-transform:uppercase}.ds-switch a+a{border-left:1px solid #1A1F26}.ds-switch a:hover{background:#ECEFF2}.ds-switch a:focus-visible{outline:2px solid currentColor;outline-offset:-4px}.ds-switch a[aria-current=page]{background:#1A1F26;color:#fff}.ds-switch span{font-weight:400;opacity:.75}"
+    },
+    {
+      "name": "Outcome Swatches",
+      "kind": "custom",
+      "refersTo": "swatch-saved",
+      "description": "Outcomes are written in words; the swatch repeats them: solid blue saved, hatched lost, blue frame nothing changed.",
+      "html": "<span class=\"ds-out\"><i class=\"ds-sw ds-sw-saved\"></i> Saved <i class=\"ds-sw ds-sw-lost\"></i> Lost <i class=\"ds-sw ds-sw-empty\"></i> nothing changed</span>",
+      "css": ".ds-out{display:inline-flex;align-items:center;gap:6px;font:600 13px system-ui,sans-serif;color:#1A1F26}.ds-sw{display:inline-block;width:11px;height:11px;border:1.5px solid transparent}.ds-sw-saved{background:#2451B7;border-color:#2451B7}.ds-sw-empty{background:#fff;border-color:#2451B7}.ds-sw-lost{border-color:#6B7480;background:#fff repeating-linear-gradient(135deg,#6B7480 0 1.5px,transparent 1.5px 4.5px)}"
+    },
+    {
+      "name": "Lifetime Bar",
+      "kind": "custom",
+      "refersTo": "list-row-hover",
+      "description": "How long a container lived, on a shared scale; blue if its live evidence was saved; orange tick at the 0.5 s poll interval.",
+      "html": "<span class=\"ds-life\"><span class=\"ds-bar\" style=\"width:62%\"></span><span class=\"ds-tick\" style=\"left:18%\"></span></span> <b class=\"ds-v\">1.16 s</b>",
+      "css": ".ds-life{position:relative;display:inline-block;width:200px;height:10px;background:#F6F7F9;vertical-align:middle}.ds-bar{position:absolute;left:0;top:0;bottom:0;background:#2451B7;border-radius:0 4px 4px 0}.ds-tick{position:absolute;top:-3px;bottom:-3px;border-left:2px solid #E0590F}.ds-v{font:600 12.5px system-ui,sans-serif}"
+    },
+    {
+      "name": "Story Item",
+      "kind": "custom",
+      "refersTo": "sheet",
+      "description": "One event in a container's 'What happened' timeline: time, marker, sentence, UTC clock time.",
+      "html": "<div class=\"ds-ev\"><b>3.68 s</b><i></i><span>Killed with SIGKILL. The process stopped immediately.</span><code>14:25:28.235</code></div>",
+      "css": ".ds-ev{display:grid;grid-template-columns:4.5rem 14px 1fr auto;gap:12px;align-items:start;font:14px system-ui,sans-serif;color:#1A1F26}.ds-ev b{text-align:right;font:700 14px Bahnschrift,'DIN Alternate','Roboto Condensed','Arial Narrow',sans-serif}.ds-ev i{width:14px;height:14px;margin-top:3px;background:#1A1F26;border-radius:2px}.ds-ev code{color:#56606C;font:12px ui-monospace,Consolas,monospace}"
+    },
+    {
+      "name": "Filter Input",
+      "kind": "input",
+      "refersTo": "filter-input",
+      "description": "Container list search.",
+      "html": "<input class=\"ds-filter\" type=\"search\" placeholder=\"Container name\">",
+      "css": ".ds-filter{width:14rem;padding:6px 10px;border:1px solid #7D8793;border-radius:2px;background:#fff;color:#1A1F26;font:13px system-ui,sans-serif}.ds-filter::placeholder{color:#56606C}.ds-filter:focus-visible{outline:2px solid #2451B7;border-color:#2451B7}"
+    },
+    {
+      "name": "Alarm Notice",
+      "kind": "custom",
+      "refersTo": "sheet",
+      "description": "Unreadable file or hash mismatch: a 1px alarm box with a caps label.",
+      "html": "<p class=\"ds-notice\"><span>Unreadable</span> testcontainer6.json: this file is empty or corrupt.</p>",
+      "css": ".ds-notice{margin:0;padding:8px 12px;border:1px solid #B42318;color:#1A1F26;font:13px system-ui,sans-serif}.ds-notice span{margin-right:8px;color:#B42318;font:600 12px Bahnschrift,'DIN Alternate','Roboto Condensed','Arial Narrow',sans-serif;letter-spacing:.06em;text-transform:uppercase}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Say it, then show it",
+    "overview": "Each screen leads with the finding in a plain sentence; a chart comes second and only one a first-time reader understands without a legend lesson. A container's page tells its life as a timed story. The first redesign's train-graph grammar was dropped after the user found it hard to read; its slate plate, condensed caps and tabular figures were kept.",
+    "keyCharacteristics": [
+      "A plain-language result sentence first, numbers in bold figure type.",
+      "One accent colour: blue means saved; hatched grey means lost; orange only marks the 0.5 s poll interval.",
+      "Outcomes written as words; colour and hatching repeat them.",
+      "Times in seconds since the container started, with UTC clock time alongside.",
+      "Uncertain times shown as windows, never false points."
+    ],
+    "rules": [
+      {
+        "name": "The One Accent Rule",
+        "section": "colors",
+        "body": "Blue is the only colour that carries meaning. It means saved, everywhere."
+      },
+      {
+        "name": "The Word-First Rule",
+        "section": "colors",
+        "body": "Every outcome is written in words. Colour, fill and hatching repeat it for scanning and survive black-and-white printing, but nothing depends on them alone."
+      },
+      {
+        "name": "The Hatching Rule",
+        "section": "colors",
+        "body": "Hatching means lost and nothing else."
+      },
+      {
+        "name": "The Recorded-Only Rule",
+        "section": "colors",
+        "body": "An event is placed in time only when the package records its time; otherwise it is listed last with a dash and says why."
+      },
+      {
+        "name": "The Tabular Rule",
+        "section": "typography",
+        "body": "Every number that can sit above another number uses tabular figures."
+      },
+      {
+        "name": "The Data-Only Mono Rule",
+        "section": "typography",
+        "body": "Monospace appears only for machine-produced values."
+      }
+    ],
+    "dos": [
+      "Do write the finding as a sentence before any chart.",
+      "Do keep old (legacy) packages out of current results, and label them.",
+      "Do show uncertain times as windows, and explain the poll interval once, in a caption.",
+      "Do say plainly why evidence was lost, with the raw error available on demand."
+    ],
+    "donts": [
+      "Don't use charts that need a legend lesson (the train graph was tried and rejected).",
+      "Don't use neon-on-black, glows, or terminal costume (user-rejected).",
+      "Don't fall back on card grids or badge-heavy tables (user-rejected generic SaaS).",
+      "Don't call a matching hash verified without the caveat.",
+      "Don't round a threshold into a false statement: the cutoff is shown to the millisecond."
+    ]
+  }
+}
