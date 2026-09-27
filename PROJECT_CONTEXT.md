@@ -63,6 +63,20 @@ individually labeled with which source actually supplied it:
      host-clock times.
    - Anything that opens and closes between two polls (0.5s) is never seen,
      and the evidence says so. It is capped at 500 sockets per container.
+   **Resource use (added 2026-09-27):**
+   - Each poll also takes Docker's one-shot stats (~10 ms; the normal call
+     waits 1 s) via `capture.capture_resource_counters`.
+   - CPU % comes from the difference between consecutive readings
+     (`resource_delta`, 100% = one core), plus memory (excluding page
+     cache) and network in/out.
+   - The poller keeps a history per container, halving its resolution
+     when it passes 1200 samples, and `live_resources()` holds the latest
+     figures.
+   - The listener publishes those live figures in its heartbeat and writes
+     `evidence["resource_timeline"]` (samples, peaks, totals) at death.
+   - **Finding:** on Docker Desktop, the poller's `docker exec` socket read
+     runs inside the container and counts against it: about 3-4% of a core
+     on an idle container (seen in testing). The evidence note says so.
    **How it ended (added 2026-09-27):** `handle_kill` records the first
    signal, and `handle_die` the exit code from the die event.
    `evidence["termination"]` then says one of four things:
@@ -162,13 +176,17 @@ itself, using `json.dumps(data, sort_keys=True, default=str)`.
 ```
 code/
 ├── README.md
-├── requirements.txt          -- docker>=7.0.0, flask>=3.0.0
+├── requirements.txt          -- docker>=7.0.0, flask>=3.0.0, PyJWT>=2.8
+├── start.vbs                 -- double-click (Windows): starts everything with no windows, opens the browser
+├── start.py                  -- the same for any OS (venv python start.py)
+├── logs/                     -- listener.log / dashboard.log from windowless runs (git-ignored; Logs page)
 ├── PROJECT_CONTEXT.md         -- this file
 ├── PRODUCT.md                 -- product facts for design work (users, constraints, principles)
 ├── DESIGN.md                  -- the GUI's visual system (tokens, rules, components)
 ├── .impeccable/               -- design-tool metadata (design.json sidecar, surface brief)
 ├── src/                       -- core artifact only
 │   ├── capture.py             -- evidence-pulling primitives
+│   ├── runlog.py              -- print() to logs/<name>.log when there's no console (copy in gui/)
 │   ├── listener.py            -- main event loop, kill/die handlers, merge logic
 │   └── poller.py               -- background proactive snapshotting
 ├── tools/                     -- dev/evaluation utilities, not part of the artifact
@@ -177,19 +195,31 @@ code/
 │   └── debug_events.py        -- prints raw Docker events, unfiltered
 ├── tests/
 │   ├── test_timing.py         -- regression tests for lifetime/age timing (no Docker needed)
-│   └── test_ports.py          -- socket-table parsing, port history windows, safe evidence writes
+│   ├── test_ports.py          -- socket-table parsing, port history windows, safe evidence writes
+│   ├── test_resources.py      -- CPU % maths, resource history thinning, resource timeline
+│   ├── test_auth.py           -- accounts, JWT sessions, revocation, lockout, setup, admin-only, search
+│   ├── test_status.py         -- listener heartbeat, single-instance guard, dashboard status
+│   ├── test_search.py         -- search suggestions: ranking, mix, groups, endpoint
+│   └── test_background.py     -- windowless start, stop request, shut down, logs page, one dashboard
 ├── gui/                        -- evidence review dashboard (Phase 4)
-│   ├── app.py                  -- Flask app
+│   ├── app.py                  -- Flask app: pages, APIs, listener control, search, logs, shut down
+│   ├── auth.py                 -- accounts (scrypt), JWT sessions, lockout
+│   ├── runlog.py               -- identical copy of src/runlog.py (the exe can't import src/)
 │   ├── BUILD.md                -- PyInstaller packaging instructions
-│   ├── ContainerForensicsGUI.spec
-│   ├── ContainerForensicsGUI.exe -- packaged build (rebuild after any gui/ change: close the running exe first, it locks the file)
+│   ├── ContainerForensicsGUI.spec -- console=False (windowless)
+│   ├── ContainerForensicsGUI.exe -- packaged build (rebuild after any gui/ change: stop the running one first, it locks the file)
 │   ├── templates/
-│   │   ├── base.html           -- header plate
-│   │   ├── index.html          -- result sentence + saved/lost bars, container list
-│   │   └── detail.html         -- one package: what happened, ports, evidence, integrity
+│   │   ├── base.html           -- shell: nav, search + suggestions, listener status, user, Shut down
+│   │   ├── _macros.html        -- container table and tags
+│   │   ├── index.html          -- tactical dashboard: KPIs, running now, evidence rescue, container log
+│   │   ├── detail.html         -- one package: how it ended, what happened, resources, ports, evidence, integrity
+│   │   ├── search.html         -- search results
+│   │   ├── login.html / setup.html / account.html / users.html -- sign-in and accounts
+│   │   └── logs.html / shutdown.html -- windowless-run controls
 │   └── static/
-│       ├── style.css           -- opens with the design direction contract
-│       └── app.js              -- list search, sort, row click (page works without it)
+│       ├── style.css           -- Carbon g100 tokens and components (see DESIGN.md)
+│       └── app.js              -- listener status, live panel, suggestions, list filter/sort (pages work without it)
+├── config/users.json           -- accounts + JWT secret (git-ignored, never commit)
 └── evidence/                   -- captured evidence lands here as timestamped JSON
 ```
 
@@ -197,8 +227,8 @@ code/
 
 - **Docker event schema mismatch**: assumed `status`/`id` fields, real API
   sends `Action`/`Actor.ID`. Found via `tools/debug_events.py` (prints every
-  raw event unfiltered — use this whenever event handling seems to silently
-  do nothing).
+  raw event unfiltered; still there for when event handling seems to
+  silently do nothing).
 - **Eager `docker.from_env()` at import time** crashed if Docker Desktop
   wasn't running yet. Fixed with lazy `get_client()`, thread-local
   (`threading.local()`) since the poller and main event loop are on separate
@@ -256,8 +286,8 @@ code/
   - `parse_docker_timestamp` now also handles short fractions (Go drops
     trailing zeros; Python < 3.11 rejects `.23Z`) and numeric UTC offsets.
   - Evidence from the intermediate version of this fix (death = `die`
-    event) is in `evidence/archive_2026-09-26_intermediate_timing_fix/`.
-    The dashboard and analysis tool don't read subfolders.
+    event) was archived, then cleared out on 2026-09-27 along with older
+    test captures. The dashboard and analysis tool don't read subfolders.
 - **GUI: PyInstaller path resolution** — a frozen exe needs two *different*
   base paths: `sys._MEIPASS` for bundled templates/static (unpacked to a temp
   dir), vs. `os.path.dirname(sys.executable)` for the external `evidence/`
@@ -309,6 +339,45 @@ code/
 
 Read-only Flask dashboard over `evidence/*.json` — does **not** need Docker
 or the `docker` Python package at all, purely reads JSON off disk.
+
+**Current look (2026-09-27): dark "tactical dashboard"** based on the IBM Carbon Gray 100 theme
+(the user picked the IBM entry on getdesign.md). See `DESIGN.md`. Built with it:
+- **Sign-in** (`gui/auth.py`): several analyst accounts (admin/analyst). The
+  first run shows "create the admin account", and admins manage accounts at
+  /users. Passwords are salted scrypt hashes. Sessions are JWT HS256 (PyJWT)
+  in an HttpOnly SameSite=Strict cookie that expires after 8 h.
+  - Each token carries a password version, so a password change or a
+    deleted account ends open sessions at once.
+  - Five wrong passwords lock that account for 60 s.
+  - A POST carrying another site's Origin gets 403.
+  - Accounts live in `config/users.json` (git-ignored); `ECF_USERS_FILE`
+    overrides the path, which the tests use.
+- **Home page:**
+  - six KPI tiles (listener, running now, packages, live evidence saved,
+    integrity, last capture);
+  - **Running now**: live CPU / memory / network with sparklines, polled
+    from `/api/live` every 2 s;
+  - **Evidence rescue**: saved/lost by lifetime band;
+  - the captured-container log, newest first.
+- **Search** in the shell (`/search?q=`) across current and old packages.
+  It matches name, container ID, how it ended, a port, or a date; every word
+  has to match.
+  - **Suggestions (2026-09-27):** after 2 characters, up to 4 drop down
+    (`/api/search/suggest`, `search_suggestions()`):
+    - matching containers, which open their page;
+    - for a single word, matching ports, endings and capture dates (UTC,
+      like the search), which open that search.
+  - Prefix matches rank first, containers newest first, dates newest
+    first. Containers are capped at 3 while a group is available.
+  - Outside the name and ID, a word has to *start* with the typed text
+    (stricter than the search page).
+  - Rows are cached per evidence signature, so typing doesn't re-hash
+    every package.
+  - Behaves as an ARIA combobox: arrow keys, Enter, Escape.
+  - Wide tables scroll inside their panel only when they don't fit, with
+    headings static in that case, instead of scrolling the page.
+- **Detail page:** adds **Resource use** (CPU, memory and network in/out
+  charts on the shared time axis).
 
 Design history: redesigned on 2026-09-26 as a "dispatcher's train graph".
 The user found the graphs hard to understand, so the same day it was
@@ -370,6 +439,64 @@ grey = lost; orange only marks the 0.5s poll interval.
   running packaged one (default 5000).
 
 ## 7. Setup / run instructions
+
+**Everyday use (2026-09-27: no windows):** double-click `start.vbs`
+(Windows), `start.py` (any OS), or `gui/ContainerForensicsGUI.exe`.
+Nothing but the browser appears (user request: no CMD windows).
+- `start.vbs` runs `venv\Scripts\pythonw.exe gui\app.py --open` hidden.
+  The exe is built with `console=False`.
+- The dashboard (`--open`/frozen mode, no debug reloader) first looks for
+  a running dashboard on ports 5000-5019 via the public `/api/ping`. If it
+  finds one, it just opens the browser there and exits. Otherwise it takes
+  the first free port (exclusive bind), so an older exe on 5000 doesn't
+  clash.
+- It starts the listener with `pythonw.exe listener.py --background`
+  (`CREATE_NO_WINDOW | CREATE_BREAKAWAY_FROM_JOB`, so it outlives the
+  dashboard). In `--background` mode the listener:
+  - logs to `logs/listener.log`;
+  - waits for Docker instead of failing;
+  - starts Docker Desktop itself once if it can find it.
+- **Stopping:** there's no window to close.
+  - The header's **Stop** button (`POST /api/listener/stop`) creates
+    `evidence/.listener.stop`. The listener's heartbeat thread sees it
+    within 2 s, closes Docker's event stream, writes "stopped" and exits
+    (hard exit after 5 s if the stream doesn't close; saves are atomic).
+  - A stop file older than the listener is ignored and removed at start.
+  - **Shut down** (`/shutdown`, a confirm page) stops the dashboard
+    (`os._exit` after the response), and the listener too if chosen.
+    Both actions are logged with the analyst's username.
+- **Logs** (`/logs`): the last 300 lines of `logs/listener.log` and
+  `logs/dashboard.log`. `runlog.py` swaps stdout/stderr for a timestamped
+  file writer when there is no console, so crash tracebacks land there.
+  It rotates to `.log.1` past 2 MB at startup.
+- `python gui/app.py` (dev, auto-reload) and `python src/listener.py`
+  still print to their terminal as before.
+
+**Listener heartbeat (2026-09-27):** the listener rewrites
+`evidence/.listener.json` every 2 s. The dotfile is skipped by the
+evidence glob and git-ignored. It holds the state, PID, number of
+containers being watched, and evidence saved. Uses:
+- The dashboard header shows running / stopped / "not running, last seen
+  X ago" (stale after 6 s), rechecking `/api/status` every 3 s.
+- The dashboard offers "New evidence: refresh" when the evidence folder
+  changes.
+- A second listener refuses to start while the heartbeat is fresh
+  (`--force` overrides). This prevents the double-capture problem in §5.
+- **The dashboard starts the listener itself (2026-09-27).** On launch
+  (the `.exe`, `app.py`, or via `start.vbs`) it starts `src/listener.py`
+  in the background (no window) if no fresh heartbeat exists. It skips that in the
+  debug reloader's child process, and with `--no-listener`. The listener
+  always runs with `venv/`'s Python, because the `.exe` doesn't bundle
+  the docker package.
+- The header offers **Start listener** when it isn't running, via
+  `POST /api/listener/start`. Requests carrying another site's Origin
+  get 403. A 15 s launch cooldown prevents double starts.
+- A dashboard-started listener waits for Docker Desktop instead of
+  crashing (heartbeat state `waiting_docker`, shown as "Listener waiting
+  for Docker"). This state counts as alive for the single-instance
+  guard.
+
+Manual setup, if you need it:
 
 ```
 cd code

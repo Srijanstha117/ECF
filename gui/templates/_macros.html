@@ -1,0 +1,72 @@
+{# Shared pieces: the container table (dashboard + search) and outcome tags. #}
+
+{% macro live_tag(state) -%}
+    {%- if state == 'saved' -%}<span class="tag tag-saved">Saved</span>
+    {%- elif state == 'partly' -%}<span class="tag tag-partly">Partly saved</span>
+    {%- else -%}<span class="tag tag-lost">Lost</span>{%- endif -%}
+{%- endmacro %}
+
+{% macro files_tag(outcomes) -%}
+    {%- set fs = outcomes['filesystem_diff'].kind -%}
+    {%- set lg = outcomes['logs'].kind -%}
+    {%- if fs == 'lost' and lg == 'lost' -%}<span class="tag tag-lost">Lost</span>
+    {%- elif fs == 'lost' or lg == 'lost' -%}<span class="tag tag-partly">Partly saved</span>
+    {%- else -%}<span class="tag tag-saved">Saved</span>{%- endif -%}
+{%- endmacro %}
+
+{% macro container_table(rows, poll_x, poll_interval, show_legacy=False) %}
+<div class="table-wrap">
+    <table class="list" id="list">
+        <thead>
+            <tr>
+                <th><button class="sort" type="button" data-sort="name">Container</button></th>
+                <th aria-sort="descending"><button class="sort" type="button" data-sort="captured">Captured</button></th>
+                <th class="col-life"><button class="sort" type="button" data-sort="lifetime">How long it lived</button></th>
+                <th>How it ended</th>
+                <th>Live evidence</th>
+                <th>Files &amp; logs</th>
+                <th>Peak CPU · memory</th>
+                <th>Ports seen</th>
+                <th>Hash</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in rows %}
+            <tr data-name="{{ r.name|lower }} {{ r.id }}" data-lifetime="{{ r.lifetime if r.lifetime is not none else '' }}" data-captured="{{ r.captured_at or 0 }}">
+                <td>
+                    <a class="name-link" href="{{ url_for('detail', filename=r.filename) }}">{{ r.name }}</a>
+                    <small class="data">{{ r.id }}{% if show_legacy and r.legacy %} · old package{% endif %}</small>
+                </td>
+                <td class="nowrap">{% if r.captured_at %}{{ r.captured_at|ago }}<small class="data">{{ r.captured_at|format_ts }}</small>{% else %}<span class="muted">—</span>{% endif %}</td>
+                <td class="col-life">
+                    {% if r.lifetime is not none %}
+                    <span class="life" aria-hidden="true">
+                        <span class="life-bar life-{{ r.live }}" style="width: {{ '%.2f'|format(r.bar_w) }}%"></span>
+                        {% if poll_x is not none %}<span class="life-poll" style="left: {{ '%.2f'|format(poll_x) }}%"></span>{% endif %}
+                    </span>
+                    <span class="life-val">{{ "%.2f"|format(r.lifetime) }} s</span>
+                    {% else %}<span class="muted">not recorded</span>{% endif %}
+                </td>
+                <td class="ended" title="{{ r.ended.detail }}">
+                    <span class="ended-label">{{ r.ended.label }}</span>
+                    {% if r.ended.get('exit_code') is not none %}<small>exit code {{ r.ended.exit_code }}</small>{% elif r.ended.inferred %}<small>inferred</small>{% endif %}
+                </td>
+                <td>{{ live_tag(r.live) }}</td>
+                <td>{{ files_tag(r.outcomes) }}</td>
+                <td class="nowrap">{% if r.resources %}{{ "%.0f"|format(r.resources.peak_cpu or 0) }}% · {{ r.resources.peak_mem|bytes }}{% else %}<span class="muted">not tracked</span>{% endif %}</td>
+                <td class="ports">
+                    {% if r.ports.status == 'ok' %}
+                        {% if r.ports.ports %}{{ r.ports.ports[:3]|join(', ') }}{% if r.ports.ports|length > 3 %} +{{ r.ports.ports|length - 3 }}{% endif %}{% else %}<span class="muted">none</span>{% endif %}
+                        {% if r.ports.connections %}<small>{{ r.ports.connections }} connection{{ 's' if r.ports.connections != 1 }}</small>{% endif %}
+                    {% elif r.ports.status == 'never_read' %}<span class="muted">never read</span>
+                    {% else %}<span class="muted">not tracked</span>{% endif %}
+                </td>
+                <td>{% if r.hash_ok %}<span class="muted">match</span>{% else %}<span class="tag tag-lost">Mismatch</span>{% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <p class="empty" id="filter-empty" hidden>No container names match that filter.</p>
+</div>
+<p class="caption table-caption">Live evidence means the network state and process list, which vanish with the process. The bar shows how long each container lived (blue if its live evidence was saved, hatched if lost); the orange tick marks the poller's {{ poll_interval }} s interval.</p>
+{% endmacro %}

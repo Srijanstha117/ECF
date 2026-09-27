@@ -1,16 +1,14 @@
 """
 debug_events.py
 
-Temporary diagnostic tool -- prints every raw Docker event with no
-filtering, so we can see exactly what fields your Docker/docker-py
-version actually sends. listener.py assumes an event dict with
-"Type" == "container" and "status" == "die", but event formats have
-shifted across Docker Engine API versions, and if that assumption is
-wrong, listener.py silently filters everything out and never prints
-anything -- which looks exactly like "nothing detected."
+Troubleshooting: prints every raw Docker event, unfiltered. listener.py
+only reacts to events with Type "container" and Action "kill" / "die",
+reading Actor.ID and timeNano; if the Docker Engine ever sends a
+different shape, the listener would silently ignore everything, which
+looks exactly like "nothing detected". This shows what is really sent.
 
-Run this INSTEAD of listener.py, then in another window run + kill a
-test container, and copy back everything this prints.
+Run it alongside (or instead of) the listener, then run and kill a test
+container in another window.
 """
 
 import docker

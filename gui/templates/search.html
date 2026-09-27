@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% from "_macros.html" import container_table %}
+{% block title %}Search: {{ q }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Search</h1>
+        <p class="page-sub">
+            {% if q %}{{ rows|length }} of {{ total }} container{{ 's' if total != 1 }} match <strong>“{{ q }}”</strong>. Current and old packages are both searched.
+            {% else %}Type in the search box above: a container name, part of its ID, a port (e.g. 8080), how it ended (e.g. killed), or a date (e.g. 2026-09-27).{% endif %}
+        </p>
+    </div>
+</div>
+
+<section class="panel" aria-label="Results">
+    {% if rows %}
+        {{ container_table(rows, poll_x, poll_interval, show_legacy=True) }}
+    {% elif q %}
+        <p class="plain-note">No containers match. Every word has to match somewhere: try fewer words, or part of a name.</p>
+    {% endif %}
+</section>
+{% endblock %}

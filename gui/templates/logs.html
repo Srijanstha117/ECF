@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Logs{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Logs</h1>
+        <p class="page-sub">The listener and dashboard run without a window, so what they would have printed is kept here. Last {{ tail_lines }} lines of each, newest at the bottom.</p>
+    </div>
+    <a class="button button-secondary" href="{{ url_for('logs') }}">Reload</a>
+</div>
+
+{% for log in logs %}
+<section class="panel" aria-labelledby="log-{{ log.name }}">
+    <header class="panel-head">
+        <h2 class="panel-title" id="log-{{ log.name }}">{{ log.name|capitalize }}</h2>
+        <p class="panel-meta data">{{ log.path }}</p>
+    </header>
+    {% if log.text %}
+    <pre class="pre log-pre" tabindex="0">{{ log.text }}</pre>
+    {% else %}
+    <p class="panel-body">Nothing logged yet. It fills in once the {{ log.name }} has run without a window.</p>
+    {% endif %}
+</section>
+{% endfor %}
+
+<script>
+    // Open at the newest lines.
+    document.querySelectorAll(".log-pre").forEach(function (pre) { pre.scrollTop = pre.scrollHeight; });
+</script>
+{% endblock %}

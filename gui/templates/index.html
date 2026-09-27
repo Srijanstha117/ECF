@@ -1,144 +1,142 @@
 {% extends "base.html" %}
-{% block title %}Evidence{% endblock %}
-
-{% macro outcome_cell(o) -%}
-    {%- if o.kind == 'lost' -%}
-        <span class="out out-lost"><i class="sw sw-lost" aria-hidden="true"></i>Lost</span>
-    {%- elif o.kind == 'empty' -%}
-        <span class="out"><i class="sw sw-empty" aria-hidden="true"></i>Saved</span>
-        <small class="out-how">nothing changed</small>
-    {%- else -%}
-        <span class="out"><i class="sw sw-saved" aria-hidden="true"></i>Saved</span>
-        <small class="out-how">{{ 'poller copy' if o.kind == 'poller' else 'direct' }}</small>
-    {%- endif -%}
-{%- endmacro %}
-
-{% block plate_extra %}
-{% set readable = dataset_sizes.corrected + dataset_sizes.legacy %}
-<dl class="plate-readout">
-    <div><dt>containers</dt><dd>{{ total }}</dd></div>
-    <div{% if mismatches %} class="is-alarm"{% endif %}><dt>hashes match</dt><dd>{{ readable - mismatches|length }}/{{ readable }}</dd></div>
-    {% if unreadable %}<div class="is-alarm"><dt>unreadable</dt><dd>{{ unreadable|length }}</dd></div>{% endif %}
-</dl>
-{% endblock %}
+{% from "_macros.html" import container_table %}
+{% block title %}Tactical dashboard{% endblock %}
 
 {% block content %}
-<section class="sheet" aria-labelledby="result-title">
-    <header class="sheet-head">
-        <h1 class="sheet-title" id="result-title">Result</h1>
-        <nav class="switch" aria-label="Which packages">
-            <a href="{{ url_for('index', data='corrected') }}"{% if dataset == 'corrected' %} aria-current="page"{% endif %}>Current <span class="n">{{ dataset_sizes.corrected }}</span></a>
-            <a href="{{ url_for('index', data='legacy') }}"{% if dataset == 'legacy' %} aria-current="page"{% endif %}>Old (legacy) <span class="n">{{ dataset_sizes.legacy }}</span></a>
-        </nav>
-    </header>
-
-    {% if dataset == 'legacy' %}
-    <p class="legacy-note"><strong>Old packages.</strong> These were captured before the timing fix, so their lifetimes read about 0.3 s too long. Don't compare them with current packages.</p>
-    {% endif %}
-
-    {% if summary %}
-    <div class="result">
-        <div class="result-text">
-            <p class="lede">Live evidence (network connections and running processes) was saved for <strong>{{ summary.saved }} of {{ summary.total }}</strong> containers.</p>
-        </div>
-
-        <figure class="bands" aria-labelledby="bands-title">
-            <figcaption id="bands-title">Live evidence saved or lost, by how long the container lived</figcaption>
-            {% for b in summary.bands %}
-            <div class="band">
-                <span class="band-label">{{ b.label }}</span>
-                <span class="band-bar" role="img" aria-label="{{ b.label }}: {{ b.saved }} saved{% if b.partly %}, {{ b.partly }} partly saved{% endif %}, {{ b.lost }} lost">
-                    {% if b.saved %}<span class="seg seg-saved" style="width: {{ '%.2f'|format(b.saved_w) }}%"></span>{% endif %}
-                    {% if b.partly %}<span class="seg seg-partly" style="width: {{ '%.2f'|format(b.partly_w) }}%"></span>{% endif %}
-                    {% if b.lost %}<span class="seg seg-lost" style="width: {{ '%.2f'|format(b.lost_w) }}%"></span>{% endif %}
-                </span>
-                <span class="band-count"><b>{{ b.saved }}</b> of {{ b.total }} saved</span>
-            </div>
-            {% endfor %}
-            <ul class="legend">
-                <li><i class="sw sw-saved"></i> Saved</li>
-                {% if summary.any_partly %}<li><i class="sw sw-partly"></i> Partly saved</li>{% endif %}
-                <li><i class="sw sw-lost"></i> Lost</li>
-            </ul>
-        </figure>
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Tactical dashboard</h1>
+        <p class="page-sub">Live container activity, and the evidence captured when containers die.</p>
     </div>
-    {% else %}
-    <p class="empty">No {{ 'current' if dataset == 'corrected' else 'old' }} packages yet.
-        {% if dataset == 'corrected' and dataset_sizes.legacy %}<a href="{{ url_for('index', data='legacy') }}">Show the {{ dataset_sizes.legacy }} old ones</a>, or run <code>listener.py</code> and kill a container.
-        {% else %}Start <code>listener.py</code>, then run and kill a container.{% endif %}
-    </p>
-    {% endif %}
+    <nav class="switch" aria-label="Which packages">
+        <a href="{{ url_for('index', data='corrected') }}"{% if dataset == 'corrected' %} aria-current="page"{% endif %}>Current <span class="n">{{ dataset_sizes.corrected }}</span></a>
+        <a href="{{ url_for('index', data='legacy') }}"{% if dataset == 'legacy' %} aria-current="page"{% endif %}>Old (legacy) <span class="n">{{ dataset_sizes.legacy }}</span></a>
+    </nav>
+</div>
+
+{% if dataset == 'legacy' %}
+<p class="notice notice-info"><strong>Old packages.</strong> Captured before the timing fix, so their lifetimes read about 0.3 s too long. Don't compare them with current packages.</p>
+{% endif %}
+
+<section class="kpis" aria-label="Summary">
+    <div class="kpi kpi-{{ listener.state }}" id="kpi-listener-tile">
+        <span class="kpi-label">Capture listener</span>
+        <span class="kpi-value kpi-value-text"><span class="kpi-dot" aria-hidden="true"></span><span id="kpi-listener">{{ 'Running' if listener.state == 'running' else 'Waiting for Docker' if listener.state == 'waiting' else 'Off' }}</span></span>
+        <span class="kpi-sub" id="kpi-listener-sub">{{ listener.sub }}</span>
+    </div>
+    <div class="kpi">
+        <span class="kpi-label">Running now</span>
+        <span class="kpi-value" id="kpi-running">{{ kpis.running if kpis.running is not none else '—' }}</span>
+        <span class="kpi-sub">{{ 'containers being watched' if kpis.running is not none else 'needs the listener' }}</span>
+    </div>
+    <div class="kpi">
+        <span class="kpi-label">Evidence packages</span>
+        <span class="kpi-value">{{ kpis.packages }}</span>
+        <span class="kpi-sub">{% if kpis.unreadable %}<span class="alarm">{{ kpis.unreadable }} unreadable</span>{% else %}{{ 'current' if dataset == 'corrected' else 'old' }} packages{% endif %}</span>
+    </div>
+    <div class="kpi{% if kpis.lost %} kpi-warn{% endif %}">
+        <span class="kpi-label">Live evidence saved</span>
+        <span class="kpi-value">{{ kpis.saved }}<span class="kpi-of">/{{ kpis.packages }}</span></span>
+        <span class="kpi-sub">{% if kpis.saved_pct is not none %}{{ kpis.saved_pct }}% · {{ kpis.lost }} lost{% else %}nothing captured yet{% endif %}</span>
+    </div>
+    <div class="kpi{% if kpis.hash_ok < kpis.readable %} kpi-alarm{% endif %}">
+        <span class="kpi-label">Integrity</span>
+        <span class="kpi-value">{{ kpis.hash_ok }}<span class="kpi-of">/{{ kpis.readable }}</span></span>
+        <span class="kpi-sub">{{ 'hashes match' if kpis.hash_ok == kpis.readable else (kpis.readable - kpis.hash_ok)|string + ' changed since capture' }}</span>
+    </div>
+    <div class="kpi">
+        <span class="kpi-label">Last capture</span>
+        <span class="kpi-value kpi-value-text">{{ kpis.last_capture_ago or '—' }}</span>
+        <span class="kpi-sub">{{ kpis.last_capture|format_ts if kpis.last_capture else 'no evidence yet' }}</span>
+    </div>
 </section>
 
-<section class="sheet containers" aria-labelledby="list-title">
-    <header class="sheet-head">
+<div class="grid-2">
+    <section class="panel" aria-labelledby="live-title" id="live-panel" data-live-url="{{ url_for('api_live') }}">
+        <header class="panel-head">
+            <h2 class="panel-title" id="live-title">Running now</h2>
+            <span class="panel-meta" id="live-updated">live · updates every 2 s</span>
+        </header>
+        <div class="table-wrap">
+            <table class="live-table">
+                <thead>
+                    <tr><th>Container</th><th class="col-cpu">CPU</th><th class="col-mem">Memory</th><th>Network in / out</th></tr>
+                </thead>
+                <tbody id="live-rows">
+                    {% for c in live %}
+                    <tr data-id="{{ c.id }}">
+                        <td><strong class="data">{{ c.name }}</strong><small class="data">{{ c.id }}</small></td>
+                        <td class="col-cpu"><span class="meter"><span class="meter-fill" style="--pct: {{ ([c.cpu_pct, 100]|min) / 100 }}"></span></span><span class="meter-val">{{ "%.1f"|format(c.cpu_pct) }}%</span></td>
+                        <td class="col-mem"><span class="meter"><span class="meter-fill" style="--pct: {{ (c.mem_bytes / c.mem_limit_bytes) if c.mem_limit_bytes else 0 }}"></span></span><span class="meter-val">{{ c.mem_bytes|bytes }}</span></td>
+                        <td class="nowrap"><span class="net-in">↓ {{ c.rx_rate|bytes(true) }}</span> <span class="net-out">↑ {{ c.tx_rate|bytes(true) }}</span></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <p class="plain-note" id="live-empty"{% if live %} hidden{% endif %}>
+            {% if listener.state == 'running' %}No containers are running. Start one and it appears here within a second.{% else %}Live figures come from the capture listener, which isn't running. Start it from the header.{% endif %}
+        </p>
+    </section>
+
+    <section class="panel" aria-labelledby="result-title">
+        <header class="panel-head">
+            <h2 class="panel-title" id="result-title">Evidence rescue</h2>
+            <span class="panel-meta">by how long each container lived</span>
+        </header>
+        {% if summary %}
+        <div class="panel-body">
+            <p class="lede">Live evidence (network connections and running processes) was saved for <strong>{{ summary.saved }} of {{ summary.total }}</strong> containers.</p>
+            <figure class="bands" aria-label="Live evidence saved or lost, by how long the container lived">
+                {% for b in summary.bands %}
+                <div class="band">
+                    <span class="band-label">{{ b.label }}</span>
+                    <span class="band-bar" role="img" aria-label="{{ b.label }}: {{ b.saved }} saved{% if b.partly %}, {{ b.partly }} partly saved{% endif %}, {{ b.lost }} lost">
+                        {% if b.saved %}<span class="seg seg-saved" style="width: {{ '%.2f'|format(b.saved_w) }}%"></span>{% endif %}
+                        {% if b.partly %}<span class="seg seg-partly" style="width: {{ '%.2f'|format(b.partly_w) }}%"></span>{% endif %}
+                        {% if b.lost %}<span class="seg seg-lost" style="width: {{ '%.2f'|format(b.lost_w) }}%"></span>{% endif %}
+                    </span>
+                    <span class="band-count"><b>{{ b.saved }}</b> of {{ b.total }} saved</span>
+                </div>
+                {% endfor %}
+                <ul class="legend">
+                    <li><i class="sw sw-saved"></i> Saved</li>
+                    {% if summary.any_partly %}<li><i class="sw sw-partly"></i> Partly saved</li>{% endif %}
+                    <li><i class="sw sw-lost"></i> Lost</li>
+                </ul>
+            </figure>
+        </div>
+        {% else %}
+        <p class="plain-note">No {{ 'current' if dataset == 'corrected' else 'old' }} packages yet. Run and stop a container while the listener is running.</p>
+        {% endif %}
+    </section>
+</div>
+
+<section class="panel" aria-labelledby="list-title">
+    <header class="panel-head">
         <div>
-            <h2 class="sheet-title" id="list-title">Containers</h2>
-            <p class="sheet-sub">Shortest-lived first. Open one to see what happened, step by step.</p>
+            <h2 class="panel-title" id="list-title">Captured containers</h2>
+            <p class="panel-meta">Newest first. Open one to see what happened, step by step.</p>
         </div>
         <div class="tools">
-            <label class="filter-label" for="filter">Find</label>
-            <input class="filter" id="filter" type="search" placeholder="Container name" autocomplete="off">
+            <label class="visually-hidden" for="filter">Filter this list</label>
+            <input class="field" id="filter" type="search" placeholder="Filter this list" autocomplete="off">
         </div>
     </header>
 
     {% for u in unreadable %}
-    <p class="notice"><span class="label">Unreadable</span><span class="data">{{ u._filename }}</span>: this file is empty or corrupt, so nothing in it can be reviewed.</p>
+    <p class="notice notice-error"><strong>Unreadable:</strong> <span class="data">{{ u._filename }}</span> is empty or corrupt, so nothing in it can be reviewed.</p>
     {% endfor %}
     {% for m in mismatches %}
-    <p class="notice"><span class="label">Hash mismatch</span><a class="data" href="{{ url_for('detail', filename=m.filename) }}">{{ m.name }}</a>: the file has changed since it was captured.</p>
+    <p class="notice notice-error"><strong>Hash mismatch:</strong> <a class="data" href="{{ url_for('detail', filename=m.filename) }}">{{ m.name }}</a> has changed since it was captured.</p>
     {% endfor %}
 
     {% if rows %}
-    <div class="table-wrap">
-        <table class="list" id="list">
-            <thead>
-                <tr>
-                    <th><button class="sort" type="button" data-sort="name">Container</button></th>
-                    <th aria-sort="ascending" class="col-life"><button class="sort" type="button" data-sort="lifetime">How long it lived</button></th>
-                    <th>How it ended</th>
-                    {% for field, name in field_names %}<th>{{ name }}</th>{% endfor %}
-                    <th>Ports seen</th>
-                    <th>Hash</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for r in rows %}
-                <tr data-name="{{ r.name|lower }}" data-lifetime="{{ r.lifetime if r.lifetime is not none else '' }}">
-                    <td><a class="name-link" href="{{ url_for('detail', filename=r.filename) }}">{{ r.name }}</a></td>
-                    <td class="col-life">
-                        {% if r.lifetime is not none %}
-                        <span class="life" aria-hidden="true">
-                            <span class="life-bar life-{{ r.live }}" style="width: {{ '%.2f'|format(r.bar_w) }}%"></span>
-                            {% if poll_x is not none %}<span class="life-poll" style="left: {{ '%.2f'|format(poll_x) }}%"></span>{% endif %}
-                        </span>
-                        <span class="life-val">{{ "%.2f"|format(r.lifetime) }} s</span>
-                        {% else %}<span class="muted">not recorded</span>{% endif %}
-                    </td>
-                    <td class="ended" title="{{ r.ended.detail }}">
-                        <span class="ended-label">{{ r.ended.label }}</span>
-                        {% if r.ended.get('exit_code') is not none %}<small>exit code {{ r.ended.exit_code }}</small>{% elif r.ended.inferred %}<small>older package, inferred</small>{% endif %}
-                    </td>
-                    {% for field, name in field_names %}<td>{{ outcome_cell(r.outcomes[field]) }}</td>{% endfor %}
-                    <td class="ports">
-                        {% if r.ports.status == 'ok' %}
-                            {% if r.ports.ports %}{{ r.ports.ports[:3]|join(', ') }}{% if r.ports.ports|length > 3 %} +{{ r.ports.ports|length - 3 }}{% endif %}{% else %}<span class="muted">none</span>{% endif %}
-                            {% if r.ports.connections %}<small>{{ r.ports.connections }} connection{{ 's' if r.ports.connections != 1 }}</small>{% endif %}
-                        {% elif r.ports.status == 'never_read' %}<span class="muted">never read</span>
-                        {% else %}<span class="muted">not tracked</span>{% endif %}
-                    </td>
-                    <td>{% if r.hash_ok %}<span class="muted">match</span>{% else %}<span class="hash-bad">MISMATCH</span>{% endif %}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        <p class="empty" id="filter-empty" hidden>No container names match that search.</p>
-    </div>
-    <p class="caption table-caption">The bar shows how long each container lived: blue if its live evidence was saved, hatched if it was lost. The orange tick marks {{ poll_interval }} s, the poller's interval. "Ports seen" lists listening ports the poller saw; packages from before port tracking say "not tracked".</p>
+        {{ container_table(rows, poll_x, poll_interval) }}
     {% else %}
-    <p class="empty">Nothing to list.</p>
+        <p class="plain-note">Nothing captured yet.</p>
     {% endif %}
 </section>
 
-<p class="integrity-foot"><strong>About the hash check.</strong> Each file's SHA-256 is recomputed every time this page loads and compared with the value stored when it was captured. A match rules out accidental change, but because the stored hash lives in the same file, it can't prove nobody deliberately rewrote it.</p>
+<p class="integrity-foot"><strong>About the integrity check.</strong> Each file's SHA-256 is recomputed every time a page loads and compared with the value stored when it was captured. A match rules out accidental change, but because the stored hash lives in the same file, it can't prove nobody deliberately rewrote it.</p>
 {% endblock %}

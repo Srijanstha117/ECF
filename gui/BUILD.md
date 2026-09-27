@@ -5,10 +5,11 @@ double-click. It opens a browser window automatically — no Python, no `pip
 install`, no terminal on their end.
 
 Note this only bundles the GUI (`gui/app.py`), which is read-only over
-`evidence/*.json` files. It does not need Docker or the `docker` Python
-package at all — `listener.py` still has to be run the normal way (in a
-terminal, with Docker running) to actually *produce* evidence files. This
-just makes *reviewing* the results double-click-simple.
+`evidence/*.json` files and doesn't need the `docker` package. On launch
+it starts the capture listener (`src/listener.py`) in the background with
+the project's own `venv` Python, so the venv must exist next to it (see
+the README). Without it, the dashboard still opens and says why the
+listener couldn't start (Logs page).
 
 ## One-time setup
 
@@ -54,9 +55,11 @@ It has to sit in `gui/`, not `code/` or anywhere else — it looks for
 
 ## Run it
 
-Double-click `ContainerForensicsGUI.exe`. A console window opens briefly
-(that's normal — it's the server running), then your browser opens
-automatically to the dashboard. Closing the console window stops it.
+Double-click `ContainerForensicsGUI.exe`. No window opens (the spec
+has `console=False`); your browser opens to the dashboard, and the
+listener is started in the background. Stop it with **Shut down** in the
+dashboard. Output goes to `logs/dashboard.log`, shown on the Logs page.
+Opening it a second time just opens the browser on the running one.
 
 ## Rebuilding after code changes
 
