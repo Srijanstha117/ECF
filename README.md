@@ -76,8 +76,8 @@ code/
 │                                     terminal needed to view evidence)
 ├── evidence/                   -- captured evidence lands here as
 │                                   timestamped JSON
-├── tests/                      -- evaluation harness goes here (Phase 3,
-│                                   not built yet)
+├── tests/                      -- regression tests, no Docker needed:
+│                                   python -m unittest discover tests
 └── requirements.txt
 ```
 
