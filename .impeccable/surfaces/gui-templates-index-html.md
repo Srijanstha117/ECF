@@ -19,4 +19,4 @@ Direction: "Say it, then show it" (revised 2026-09-26, replacing the Dispatcher'
 
 Memorable moment: the story line "Docker reported the container as dead, 0.29 s after it actually stopped", sitting right after "Killed with SIGKILL".
 
-Unresolved: tool name (working title); listener running/not-running indicator offered but not built.
+Tool name: DocIt (2026-09-28). The listener running/not-running indicator has since been built.

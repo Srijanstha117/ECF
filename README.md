@@ -1,4 +1,4 @@
-# Forensic Evidence Capture for Ephemeral Containers
+# DocIt
 
 Core artifact for the FYP. Watches Docker's event stream and captures a
 defined evidence set (process list, network state, filesystem diff, logs)
@@ -10,7 +10,7 @@ The first time you open the dashboard it asks you to **create the admin account*
 asks you to sign in. Admins add other analysts under **Users**. Accounts are stored (as password
 hashes) in `config/users.json`, which is never committed.
 
-Double-click **`start.vbs`** (or `gui/ContainerForensicsGUI.exe`). No command windows
+Double-click **`start.vbs`** (or `gui/DocIt.exe`). No command windows
 open; only your browser does. In the background it:
 
 1. starts the evidence dashboard and opens it in your browser;
@@ -110,7 +110,7 @@ code/
 │   ├── auth.py                 -- analyst accounts and sign-in sessions
 │   ├── templates/, static/     -- pages, stylesheet, script
 │   ├── BUILD.md                -- how to package it as a standalone .exe
-│   └── ContainerForensicsGUI.exe -- packaged build (double-click)
+│   └── DocIt.exe               -- packaged build (double-click)
 ├── evidence/                   -- captured evidence lands here as
 │                                   timestamped JSON
 ├── logs/                       -- listener / dashboard output (Logs page)

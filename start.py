@@ -1,5 +1,5 @@
 r"""
-start.py -- opens ECF in the background, with no windows (any OS).
+start.py -- opens DocIt in the background, with no windows (any OS).
 
 On Windows, double-clicking start.vbs does the same thing.
 
@@ -36,7 +36,7 @@ def main():
             subprocess.Popen(command, creationflags=flags, **kwargs)
     else:
         subprocess.Popen(command, start_new_session=True, **kwargs)
-    print("ECF is starting in the background -- your browser will open in a moment.")
+    print("DocIt is starting in the background -- your browser will open in a moment.")
     print("Stop it with Shut down in the dashboard.")
     return 0
 

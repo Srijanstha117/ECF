@@ -175,7 +175,7 @@ class ShutdownAndLogsTests(_TempDirs):
 
     def test_ping_is_public_even_before_setup(self):
         body = dashboard.app.test_client().get("/api/ping").get_json()
-        self.assertEqual(body, {"app": "ecf-dashboard"})
+        self.assertEqual(body, {"app": "docit-dashboard"})
 
 
 class RunLogTests(unittest.TestCase):

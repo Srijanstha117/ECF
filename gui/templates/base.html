@@ -3,14 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}Dashboard{% endblock %} · ECF evidence review</title>
+    <title>{% block title %}Dashboard{% endblock %} · DocIt</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body class="{% block body_class %}{% endblock %}">
     <header class="shell">
         <a class="shell-name" href="{{ url_for('index') }}">
-            <span class="shell-mark">ECF</span>
-            <span class="shell-product">Ephemeral Container Forensics</span>
+            <span class="shell-mark">DocIt</span>
         </a>
         {% if current_user %}
         <nav class="shell-nav" aria-label="Main">

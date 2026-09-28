@@ -25,17 +25,17 @@ From `code/gui/`:
 
 ```
 cd gui
-pyinstaller --onefile --name ContainerForensicsGUI --add-data "templates;templates" --add-data "static;static" app.py
+pyinstaller --onefile --name DocIt --add-data "templates;templates" --add-data "static;static" app.py
 ```
 
 (The `;` between source and destination in `--add-data` is Windows-specific
 syntax — don't swap it for `:`, that's the Mac/Linux form.)
 
-This creates `gui/dist/ContainerForensicsGUI.exe`.
+This creates `gui/dist/DocIt.exe`.
 
 ## Place it correctly
 
-Copy `ContainerForensicsGUI.exe` out of `dist/` and into `gui/` itself,
+Copy `DocIt.exe` out of `dist/` and into `gui/` itself,
 alongside `app.py`:
 
 ```
@@ -44,7 +44,7 @@ code/
   src/
   gui/
     app.py
-    ContainerForensicsGUI.exe   <- built exe goes here
+    DocIt.exe                   <- built exe goes here
     templates/
     static/
 ```
@@ -55,7 +55,7 @@ It has to sit in `gui/`, not `code/` or anywhere else — it looks for
 
 ## Run it
 
-Double-click `ContainerForensicsGUI.exe`. No window opens (the spec
+Double-click `DocIt.exe`. No window opens (the spec
 has `console=False`); your browser opens to the dashboard, and the
 listener is started in the background. Stop it with **Shut down** in the
 dashboard. Output goes to `logs/dashboard.log`, shown on the Logs page.

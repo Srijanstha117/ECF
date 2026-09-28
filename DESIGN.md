@@ -1,5 +1,5 @@
 ---
-name: ECF — Evidence Review (tactical dashboard)
+name: DocIt — Evidence Review (tactical dashboard)
 description: A dark, Carbon-inspired operations console for container evidence. Live activity and captured evidence on one screen, each finding still said in words.
 colors:
   background: "#161616"
@@ -128,7 +128,7 @@ components:
     height: "48px"
 ---
 
-# Design System: ECF — Evidence Review (tactical dashboard)
+# Design System: DocIt — Evidence Review (tactical dashboard)
 
 ## Overview
 

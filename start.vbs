@@ -1,4 +1,4 @@
-' Double-click to open ECF with no command windows.
+' Double-click to open DocIt with no command windows.
 '
 ' Starts the evidence dashboard in the background; it opens your browser,
 ' starts the capture listener, and starts Docker Desktop if it isn't up.
@@ -13,7 +13,7 @@ pythonw = here & "\venv\Scripts\pythonw.exe"
 If Not fso.FileExists(pythonw) Then
     MsgBox "The Python environment is missing. From this folder, run:" & vbCrLf & vbCrLf & _
            "    python -m venv venv" & vbCrLf & _
-           "    venv\Scripts\pip install -r requirements.txt", vbExclamation, "ECF"
+           "    venv\Scripts\pip install -r requirements.txt", vbExclamation, "DocIt"
     WScript.Quit 1
 End If
 Set shell = CreateObject("WScript.Shell")

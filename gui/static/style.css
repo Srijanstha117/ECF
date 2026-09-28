@@ -131,8 +131,7 @@ small { display: block; color: var(--text-helper); font-size: 12px; letter-spaci
     white-space: nowrap;
 }
 .shell-name:hover { color: var(--text-primary); background: var(--layer-hover-01); }
-.shell-mark { font-weight: 600; letter-spacing: 0.1em; }
-.shell-product { color: var(--text-secondary); }
+.shell-mark { font-weight: 600; letter-spacing: 0; }
 
 .shell-nav { display: flex; border-left: 1px solid var(--border-subtle); }
 .shell-nav a {
@@ -269,12 +268,11 @@ small { display: block; color: var(--text-helper); font-size: 12px; letter-spaci
 @media (max-width: 1100px) {
     .shell { flex-wrap: wrap; }
     .shell-search { order: 5; flex-basis: 100%; padding: var(--s2) var(--s4); border-top: 1px solid var(--border-subtle); }
-    .shell-product { display: none; }
 }
 /* The one-row shell only fits everything on wide screens: drop the
    secondary words first, then wrap (never scroll the page sideways). */
 @media (max-width: 1500px) {
-    .shell-product, .shell-role { display: none; }
+    .shell-role { display: none; }
 }
 @media (max-width: 1320px) {
     .listener-sub { display: none; }

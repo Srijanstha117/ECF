@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "generatedAt": "2026-09-26T14:30:25+00:00",
-  "title": "Design System: Ephemeral Container Forensics — Evidence Review",
+  "title": "Design System: DocIt — Evidence Review",
   "extensions": {
     "colorMeta": {
       "saved": {
@@ -340,7 +340,7 @@
       "kind": "nav",
       "refersTo": "plate",
       "description": "Slate band on every screen: condensed caps title, orange underline, readout on the right.",
-      "html": "<header class=\"ds-plate\"><a class=\"ds-plate-name\" href=\"#\">Ephemeral Container Forensics</a><span class=\"ds-plate-sub\">Evidence review · read-only</span></header>",
+      "html": "<header class=\"ds-plate\"><a class=\"ds-plate-name\" href=\"#\">DocIt</a><span class=\"ds-plate-sub\">Evidence review · read-only</span></header>",
       "css": ".ds-plate{display:flex;align-items:baseline;gap:12px;padding:12px 24px;background:#17212E;color:#fff;border-bottom:3px solid #E0590F}.ds-plate-name{color:#fff;text-decoration:none;font:700 19px/1.2 Bahnschrift,'DIN Alternate','Roboto Condensed','Arial Narrow',sans-serif;font-stretch:semi-condensed;letter-spacing:.02em;text-transform:uppercase}.ds-plate-name:focus-visible{outline:2px solid #fff;outline-offset:2px}.ds-plate-sub{color:#A9B4C2;font:12.5px system-ui,sans-serif}"
     },
     {

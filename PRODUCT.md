@@ -53,13 +53,13 @@ Evidence from ephemeral containers is gone the moment they die, unless it was ca
 - **Security:** path traversal is rejected; only bare `.json` filenames are served.
 - **Integrity claim limit:** the stored SHA-256 is recomputed on load, and a mismatch is a finding. The hash sits inside the same file, though, so it catches accidental change, not deliberate tampering. The UI must not overclaim.
 - **Terminology:** evidence package, rescued, lost, direct capture (the kill-trigger capture for network/process; the post-mortem die-handler capture for filesystem/logs. The JSON labels both `live_kill_trigger`), poller snapshot, snapshot age, lifetime, legacy.
-- **Undecided:** the tool's name. Use a plain working title until one is chosen.
+- **Name: DocIt** (chosen by the user, 2026-09-28). No tagline (the old descriptive name was removed everywhere at the user's request, 2026-09-28). The FYP report title is DocIt too (user's choice, 2026-09-28).
 
 ## Evidence on Hand
 
 - Real evidence packages in `code/evidence/`: 2 current packages as of 2026-09-27, after older trials and test captures were cleared out. New ones arrive with each experiment; the Phase 3 sweep will add many more.
 - Empirical findings and history in `PROJECT_CONTEXT.md` §3 and §5.
-- No logo, brand assets, or product name exist. Do not invent them.
+- No logo or brand assets exist; the name is DocIt, set in plain type. Don't invent a logo.
 
 ## Product Principles
 

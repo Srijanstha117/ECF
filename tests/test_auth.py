@@ -158,7 +158,7 @@ class WebFlowTests(unittest.TestCase):
         self.store.create_user(ADMIN, ADMIN_PW, role="admin")
         client = signed_in_client(self.store, ADMIN)
         r = client.post("/logout")
-        self.assertIn("ecf_session=;", r.headers.get("Set-Cookie", ""))
+        self.assertIn("docit_session=;", r.headers.get("Set-Cookie", ""))
 
 
 class SearchTests(unittest.TestCase):

@@ -1,7 +1,7 @@
 """
 gui/app.py
 
-Evidence review dashboard for the ephemeral container forensics tool.
+DocIt -- evidence review dashboard.
 
 Read-only web UI over the evidence/ folder produced by listener.py --
 lists every captured evidence package, says in plain words what was
@@ -14,7 +14,7 @@ file, it can't by itself prove the file wasn't deliberately rewritten
 
 Run in dev with:     python app.py            (debug + auto-reload, in a terminal)
 Run windowless:      pythonw app.py --open    (what start.vbs does), or
-                     ContainerForensicsGUI.exe (see BUILD.md)
+                     DocIt.exe (see BUILD.md)
 Then open:           http://127.0.0.1:5000 (opens automatically when
                       windowless; output goes to logs/dashboard.log)
 Stop it with the dashboard's "Shut down" button (or Ctrl+C in dev).
@@ -1269,13 +1269,13 @@ def shutdown():
 @app.route("/api/ping")
 def ping():
     """Public: lets a second launch find the dashboard that's already running."""
-    return {"app": "ecf-dashboard"}
+    return {"app": "docit-dashboard"}
 
 
 # ---------------------------------------------------------------- accounts & sessions
 
-AUTH = AuthStore(os.environ.get("ECF_USERS_FILE") or os.path.join(CODE_DIR, "config", "users.json"))
-SESSION_COOKIE = "ecf_session"
+AUTH = AuthStore(os.environ.get("DOCIT_USERS_FILE") or os.path.join(CODE_DIR, "config", "users.json"))
+SESSION_COOKIE = "docit_session"
 _PUBLIC_ENDPOINTS = {"static", "login", "setup"}
 
 
@@ -1484,11 +1484,11 @@ def _port_free(port):
 
 
 def _dashboard_at(port):
-    """True if a current ECF dashboard answers on this port."""
+    """True if a current DocIt dashboard answers on this port."""
     import urllib.request
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/ping", timeout=1) as r:
-            return json.load(r).get("app") == "ecf-dashboard"
+            return json.load(r).get("app") == "docit-dashboard"
     except (OSError, ValueError):
         return False
 

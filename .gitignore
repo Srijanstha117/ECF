@@ -5,7 +5,7 @@ src/venv/
 __pycache__/
 *.pyc
 
-# PyInstaller working folders (the finished gui/ContainerForensicsGUI.exe is kept)
+# PyInstaller working folders (the finished gui/DocIt.exe is kept)
 gui/build/
 gui/dist/
 

@@ -1,4 +1,4 @@
-# Forensic Evidence Capture for Ephemeral Containers — Full Project Context
+# DocIt — Full Project Context
 
 This document exists so a fresh Claude Code session (or any developer with no
 prior context) can pick this project up and continue or rebuild it correctly,
@@ -206,8 +206,8 @@ code/
 │   ├── auth.py                 -- accounts (scrypt), JWT sessions, lockout
 │   ├── runlog.py               -- identical copy of src/runlog.py (the exe can't import src/)
 │   ├── BUILD.md                -- PyInstaller packaging instructions
-│   ├── ContainerForensicsGUI.spec -- console=False (windowless)
-│   ├── ContainerForensicsGUI.exe -- packaged build (rebuild after any gui/ change: stop the running one first, it locks the file)
+│   ├── DocIt.spec              -- console=False (windowless)
+│   ├── DocIt.exe               -- packaged build (rebuild after any gui/ change: stop the running one first, it locks the file)
 │   ├── templates/
 │   │   ├── base.html           -- shell: nav, search + suggestions, listener status, user, Shut down
 │   │   ├── _macros.html        -- container table and tags
@@ -350,7 +350,7 @@ or the `docker` Python package at all, purely reads JSON off disk.
     deleted account ends open sessions at once.
   - Five wrong passwords lock that account for 60 s.
   - A POST carrying another site's Origin gets 403.
-  - Accounts live in `config/users.json` (git-ignored); `ECF_USERS_FILE`
+  - Accounts live in `config/users.json` (git-ignored); `DOCIT_USERS_FILE`
     overrides the path, which the tests use.
 - **Home page:**
   - six KPI tiles (listener, running now, packages, live evidence saved,
@@ -441,7 +441,7 @@ grey = lost; orange only marks the 0.5s poll interval.
 ## 7. Setup / run instructions
 
 **Everyday use (2026-09-27: no windows):** double-click `start.vbs`
-(Windows), `start.py` (any OS), or `gui/ContainerForensicsGUI.exe`.
+(Windows), `start.py` (any OS), or `gui/DocIt.exe`.
 Nothing but the browser appears (user request: no CMD windows).
 - `start.vbs` runs `venv\Scripts\pythonw.exe gui\app.py --open` hidden.
   The exe is built with `console=False`.
